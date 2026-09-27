@@ -11,7 +11,8 @@
 - [x] Publish source in `hermitm0nk/whisproid` and an installable test APK in the v0.1.0 GitHub Release.
 - [x] Independent source review completed; corrected the reported defects and rebuilt with lint and unit tests.
 - [x] Run automated emulator smoke tests on Android 11, 15 and 16 (API 30, 35, 36; GitHub Actions matrix 2026-09-27).
-- [ ] Verify synthesized speech through the real Gemini Live API using the repository secret, and inspect emulator UI screenshots.
+- [x] Verify synthesized speech through the real Gemini Live API using the repository secret (GitHub Actions 2026-09-28).
+- [ ] Check focused/unfocused cross-app overlay and inspect emulator UI screenshots.
 - [x] Publish the v0.1.1 APK with finalized-transcript handling and emulator test coverage.
 
 ## Release gates
