@@ -1,0 +1,35 @@
+name: Android build
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - run: ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Whisproid-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+      - name: Publish test release
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RELEASE_TAG="$GITHUB_REF_NAME"
+          if [[ "$GITHUB_REF" == refs/heads/main ]]; then RELEASE_TAG=v0.1.0; fi
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" app/build/outputs/apk/debug/app-debug.apk --target "$GITHUB_SHA" --title "Whisproid $RELEASE_TAG (test build)" --notes "Installable debug-signed APK. Device and real-API testing remains pending. Builds from different runners have different signing keys; uninstall previous test builds before updating."
+          fi

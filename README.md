@@ -1,15 +1,15 @@
-# FlowBubble
+# Whisproid
 
 Android 11+ dictation bubble for Gemini 3.5 Transcribe Live. This independent project is inspired by Wispr Flow's Android interaction, and is not affiliated with Wispr.
 
 ## Use
 
 1. Install the APK. In Settings, enter a Google AI Studio API key.
-2. Tap **Enable dictation** while FlowBubble is open; grant microphone permission. This starts a persistent, visible microphone-capable foreground service. It records only during dictation.
-3. Enable **FlowBubble** under Android Accessibility settings. A small movable translucent bubble appears when an ordinary text editor has input focus. Password, number and phone fields are excluded.
+2. Tap **Enable dictation** while Whisproid is open; grant microphone permission. This starts a persistent, visible microphone-capable foreground service. It records only during dictation.
+3. Enable **Whisproid** under Android Accessibility settings. A small movable translucent bubble appears when an ordinary text editor has input focus. Password, number and phone fields are excluded.
 4. Hold the bubble, speak and release to submit. Or tap the bubble to start, then tap **✓** to submit or **×** to cancel. A successful transcript is inserted at the cursor and saved in local history. Tap **Disable dictation** in the app to stop the ready service and notification.
 
-The bubble's size, opacity and shape (orb, pill, soft square), plus light/dark mode, can be changed in Settings. Drag the idle bubble to move it. If the service is stopped by Android, reopen FlowBubble and tap Enable dictation to restart it.
+The bubble's size, opacity and shape (orb, pill, soft square), plus light/dark mode, can be changed in Settings. Drag the idle bubble to move it. If the service is stopped by Android, reopen Whisproid and tap Enable dictation to restart it.
 
 ## Data and permissions
 
