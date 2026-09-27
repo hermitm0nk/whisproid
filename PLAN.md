@@ -8,8 +8,10 @@
 - [x] Stream 16 kHz mono PCM directly to Gemini with manual activity start/end and Smart transcription.
 - [x] Compile and run local unit tests (`:app:testDebugUnitTest :app:assembleDebug`, 2026-09-28); APK signature verified with `apksigner`.
 - [ ] Install and validate on physical Android 11, 15 and 16; verify third-party text fields, interruption, clipboard fallback and OEM battery settings.
-- [ ] Publish source in `hermitm0nk` and an installable test APK in a GitHub Release.
+- [x] Publish source in `hermitm0nk/whisproid` and an installable test APK in the v0.1.0 GitHub Release.
+- [x] Independent source review completed; corrected the reported defects and rebuilt with lint and unit tests.
+- [ ] Run automated emulator smoke tests on Android 11, 15 and 16.
 
 ## Release gates
 
-Build and unit tests are automated. A physical-device and real-API test requires a phone and the user's AI Studio key; do not mark it passed based only on compilation. Debug signing is temporary; production updates need a stable signing key.
+Build, lint, unit tests and emulator smoke tests are automated. A physical-device and real-API test requires a phone and the user's AI Studio key; do not mark it passed based only on compilation. Debug signing is temporary; production updates need a stable signing key.
