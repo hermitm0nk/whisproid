@@ -209,7 +209,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
     private fun beginRecording() {
         val mic = MicrophoneService.instance
         if (mic == null) {
-            notifyUser("Open FlowBubble and tap Enable dictation first")
+            notifyUser("Open Whisproid and tap Enable dictation first")
             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return
         }
@@ -223,7 +223,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
     }
     override fun onTranscript(text: String) {
         main.post {
-            HistoryStore(this).add(text)
+            HistoryStore(this).use { it.add(text) }
             val node = target
             val stillFocused = focusedEditor()
             if (targetInvalidated || node == null || !node.refresh() || !node.isFocused || stillFocused != node || stillFocused.windowId != targetWindow) {
@@ -248,7 +248,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
             return true
         }
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("FlowBubble transcription", words))
+        clipboard.setPrimaryClip(ClipData.newPlainText("Whisproid transcription", words))
         return node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
     }
     override fun onFailure(message: String) { main.post { lastError = message; state = "ready"; render(); notifyUser(message) } }

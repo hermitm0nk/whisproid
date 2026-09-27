@@ -1,6 +1,6 @@
 # Plan and progress
 
-## 0.1.0 scope
+## 0.1.1 scope
 
 - [x] Research Wispr's Android bubble, Gemini 3.5 Transcribe Live WebSocket protocol, and Android accessibility/microphone restrictions.
 - [x] Build native Android project with local encrypted API key, app-private transcript history and theme/appearance controls.
@@ -10,7 +10,8 @@
 - [ ] Install and validate on physical Android 11, 15 and 16; verify third-party text fields, interruption, clipboard fallback and OEM battery settings.
 - [x] Publish source in `hermitm0nk/whisproid` and an installable test APK in the v0.1.0 GitHub Release.
 - [x] Independent source review completed; corrected the reported defects and rebuilt with lint and unit tests.
-- [ ] Run automated emulator smoke tests on Android 11, 15 and 16.
+- [x] Run automated emulator smoke tests on Android 11, 15 and 16 (API 30, 35, 36; GitHub Actions matrix 2026-09-27).
+- [ ] Publish the v0.1.1 APK with finalized-transcript handling and emulator test coverage.
 
 ## Release gates
 

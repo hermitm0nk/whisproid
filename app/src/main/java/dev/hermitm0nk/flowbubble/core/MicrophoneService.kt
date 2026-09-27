@@ -83,7 +83,7 @@ class MicrophoneService : Service() {
             session = null
             when {
                 error != null -> {
-                    if (!text.isNullOrBlank()) HistoryStore(this).add(text)
+                    if (!text.isNullOrBlank()) HistoryStore(this).use { it.add(text) }
                     listener?.onFailure(error + if (!text.isNullOrBlank()) "; partial transcript saved in History" else "")
                 }
                 text.isNullOrBlank() -> listener?.onFailure("No speech was transcribed")
@@ -164,7 +164,9 @@ class MicrophoneService : Service() {
                             val transcript = content?.optJSONObject("inputTranscription")?.optString("text")?.trim().orEmpty()
                             if (transcript.isNotEmpty()) {
                                 finalized.add(transcript)
-                                if (ended && turnCompleteSeen) scheduleResult(2000)
+                                // The transcription API calls inputTranscription finalized; it
+                                // need not send a turnComplete event for every segment.
+                                if (ended) scheduleResult(2000)
                             }
                             if (content?.optBoolean("turnComplete") == true) {
                                 turnCompleteSeen = true
@@ -179,7 +181,7 @@ class MicrophoneService : Service() {
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                     synchronized(lock) {
                         if (done) return
-                        if (ended && turnCompleteSeen && finalized.isNotEmpty()) scheduleResult(100)
+                        if (ended && finalized.isNotEmpty()) scheduleResult(100)
                         else fail("Live API closed before completion: $reason")
                     }
                 }
@@ -238,8 +240,9 @@ class MicrophoneService : Service() {
         }
         private fun scheduleResult(delayMs: Long) { main.removeCallbacks(timeout); main.postDelayed(timeout, delayMs) }
         private fun finishResult() {
-            if (!setup || !turnCompleteSeen) {
-                fail(if (!setup) "Live API did not complete setup" else "Live API did not confirm completion")
+            val ready = synchronized(lock) { setup to finalized.isNotEmpty() }
+            if (!ready.first || !ready.second) {
+                fail(if (!ready.first) "Live API did not complete setup" else "No finalized transcription was received")
                 return
             }
             val result: String
