@@ -1,0 +1,64 @@
+"""Secret-backed Gemini Live protocol smoke test with generated, nonprivate speech."""
+import asyncio
+import json
+import os
+from pathlib import Path
+from urllib.parse import urlencode
+
+import websockets
+
+
+async def run():
+    key = os.environ.get("GOOGLE_AI_STUDIO_KEY", "")
+    if not key:
+        raise RuntimeError("GOOGLE_AI_STUDIO_KEY is missing")
+    pcm = Path("speech.pcm").read_bytes()
+    assert pcm and len(pcm) % 2 == 0
+    url = ("wss://generativelanguage.googleapis.com/ws/"
+           "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?"
+           + urlencode({"key": key}))
+    setup = {"setup": {
+        "model": "models/gemini-3.5-transcribe-live",
+        "generationConfig": {"responseModalities": ["TEXT"]},
+        "realtimeInputConfig": {"automaticActivityDetection": {"disabled": True}},
+        "inputAudioTranscription": {"mode": "SMART"},
+    }}
+    async with websockets.connect(url, max_size=None) as ws:
+        await ws.send(json.dumps(setup))
+        while True:
+            response = json.loads(await asyncio.wait_for(ws.recv(), 20))
+            if "setupComplete" in response:
+                break
+        await ws.send(json.dumps({"realtimeInput": {"activityStart": {}}}))
+        import base64
+        for offset in range(0, len(pcm), 3200):
+            chunk = pcm[offset:offset + 3200]
+            await ws.send(json.dumps({"realtimeInput": {"audio": {
+                "data": base64.b64encode(chunk).decode("ascii"),
+                "mimeType": "audio/pcm;rate=16000",
+            }}}))
+            await asyncio.sleep(len(chunk) / 32000)
+        await ws.send(json.dumps({"realtimeInput": {"activityEnd": {}}}))
+        finalized = []
+        deadline = asyncio.get_running_loop().time() + 30
+        while asyncio.get_running_loop().time() < deadline:
+            try:
+                response = json.loads(await asyncio.wait_for(ws.recv(), 5))
+            except asyncio.TimeoutError:
+                if finalized:
+                    break
+                continue
+            content = response.get("serverContent") or {}
+            text = (content.get("inputTranscription") or {}).get("text", "").strip()
+            if text:
+                finalized.append(text)
+            if content.get("turnComplete") and finalized:
+                break
+    combined = " ".join(finalized).lower()
+    if "sky is blue" not in combined:
+        raise AssertionError("Finalized transcription did not contain the expected speech")
+    print("Gemini Live finalized the expected spoken phrase")
+
+
+if __name__ == "__main__":
+    asyncio.run(run())

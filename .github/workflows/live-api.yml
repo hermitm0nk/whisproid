@@ -1,0 +1,26 @@
+name: Gemini Live integration test
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  transcribe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare synthetic speech
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq espeak-ng ffmpeg
+          espeak-ng -s 135 -w speech.wav 'Today is Monday and the sky is blue.'
+          ffmpeg -hide_banner -loglevel error -i speech.wav -ar 16000 -ac 1 -f s16le speech.pcm
+          python -m pip install 'websockets==14.2'
+      - name: Transcribe through the real Gemini Live WebSocket
+        env:
+          GOOGLE_AI_STUDIO_KEY: ${{ secrets.GOOGLE_AI_STUDIO_KEY }}
+        run: python scripts/live_api_smoke.py

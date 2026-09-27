@@ -31,9 +31,20 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: ./gradlew connectedDebugAndroidTest --no-daemon
+          script: |
+            adb shell input keyevent 82
+            adb shell wm dismiss-keyguard
+            test_status=0
+            ./gradlew connectedDebugAndroidTest --no-daemon || test_status=$?
+            mkdir -p screenshots
+            adb pull /sdcard/Android/data/dev.hermitm0nk.flowbubble/files/screenshots screenshots/api-${{ matrix.api-level }} || true
+            adb exec-out screencap -p > screenshots/device-on-exit-api-${{ matrix.api-level }}.png || true
+            exit $test_status
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
-          name: instrumentation-results-api-${{ matrix.api-level }}
-          path: app/build/reports/androidTests/connected/
+          name: emulator-results-api-${{ matrix.api-level }}
+          path: |
+            app/build/reports/androidTests/connected/
+            screenshots/
+          if-no-files-found: warn

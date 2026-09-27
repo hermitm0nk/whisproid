@@ -1,5 +1,6 @@
 package dev.hermitm0nk.flowbubble
 
+import android.graphics.Bitmap
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
@@ -15,6 +16,8 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
+import java.io.FileOutputStream
 
 @RunWith(AndroidJUnit4::class)
 class AppSmokeTest {
@@ -45,12 +48,28 @@ class AppSmokeTest {
     }
 
     @Test fun mainScreenLaunchesSettingsAndHistory() {
+        HistoryStore(context).use { it.add("Screenshot sample transcript") }
         ActivityScenario.launch(MainActivity::class.java).use {
             onView(withText("Whisproid")).check(matches(isDisplayed()))
+            captureScreenshot("home")
             onView(withText("API key and bubble appearance")).perform(click())
             onView(withText("Google AI Studio API key")).check(matches(isDisplayed()))
+            captureScreenshot("settings")
             onView(withText("View transcript history")).perform(click())
             onView(withText("Transcript history")).check(matches(isDisplayed()))
+            onView(withText("Screenshot sample transcript")).check(matches(isDisplayed()))
+            captureScreenshot("history")
         }
+    }
+
+    private fun captureScreenshot(name: String) {
+        val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+            ?: throw AssertionError("Could not capture $name screenshot")
+        val directory = File(context.getExternalFilesDir(null), "screenshots")
+        check(directory.mkdirs() || directory.isDirectory) { "Could not create screenshot directory" }
+        FileOutputStream(File(directory, "$name.png")).use { output ->
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) { "Could not save $name screenshot" }
+        }
+        bitmap.recycle()
     }
 }

@@ -27,7 +27,7 @@ Use JDK 17, Android SDK platform/build tools 35 and Gradle 8.13:
 
 Install `app/build/outputs/apk/debug/app-debug.apk`. The debug APK is test-signed; it is installable, but signatures generated on different machines differ, so uninstall before installing a build signed elsewhere. No API key is embedded in the APK. For a production release, configure a persistent private release signing key outside the repository.
 
-The GitHub Actions emulator matrix runs `connectedDebugAndroidTest` on API 30, 35 and 36. It checks the settings screen, encrypted key round trip, and local history persistence/deletion. It does not exercise a live AI Studio session or third-party editor insertion.
+The GitHub Actions emulator matrix runs `connectedDebugAndroidTest` on API 30, 35 and 36. It checks the settings screen, encrypted key round trip, and local history persistence/deletion, and uploads UI screenshots. A separate secret-backed workflow synthesizes speech and checks an actual Gemini Live WebSocket transcription using the repository's `GOOGLE_AI_STUDIO_KEY` Actions secret. These tests do not exercise microphone capture or third-party editor insertion on a physical phone.
 
 ## Known limits
 
