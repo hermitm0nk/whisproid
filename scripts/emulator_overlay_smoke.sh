@@ -14,21 +14,62 @@ adb shell settings put secure accessibility_enabled 1
 sleep 3
 adb shell dumpsys accessibility > "screenshots/accessibility-api-$api_level.txt"
 adb shell am start -n dev.hermitm0nk.flowbubble.test/dev.hermitm0nk.flowbubble.HostActivity --ez focus false
-sleep 3
-adb shell uiautomator dump /sdcard/window.xml >/dev/null
-adb shell cat /sdcard/window.xml > "screenshots/unfocused-api-$api_level.xml"
-adb exec-out screencap -p > "screenshots/unfocused-api-$api_level.png"
-editor_coordinates=$(python3 - "screenshots/unfocused-api-$api_level.xml" <<'PY'
+editor_coordinates=""
+quickstep_recovered=0
+for attempt in {1..12}; do
+    adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+    adb shell cat /sdcard/window.xml > "screenshots/unfocused-api-$api_level.xml"
+    detected_target=$(python3 - "screenshots/unfocused-api-$api_level.xml" <<'PY'
 import re
 import sys
 import xml.etree.ElementTree as ET
 
-root = ET.parse(sys.argv[1]).getroot()
-editor = next(n for n in root.iter("node") if n.get("text") == "Write a message")
-x1, y1, x2, y2 = map(int, re.findall(r"\d+", editor.attrib["bounds"]))
-print((x1 + x2) // 2, (y1 + y2) // 2)
+def center(node):
+    bounds = list(map(int, re.findall(r"\d+", node.attrib["bounds"])))
+    if len(bounds) == 4 and bounds[2] > bounds[0] and bounds[3] > bounds[1]:
+        return f"{(bounds[0] + bounds[2]) // 2} {(bounds[1] + bounds[3]) // 2}"
+    return None
+
+try:
+    root = ET.parse(sys.argv[1]).getroot()
+    nodes = list(root.iter("node"))
+    texts = {n.get("text") for n in nodes}
+    if "Quickstep isn't responding" in texts and "Close app" in texts:
+        close_app = next(n for n in nodes if n.get("text") == "Close app")
+        coords = center(close_app)
+        if coords:
+            print(f"ANR {coords}")
+    else:
+        editor = next(n for n in nodes if n.get("text") == "Write a message")
+        coords = center(editor)
+        if coords:
+            print(f"EDITOR {coords}")
+except (ET.ParseError, OSError, KeyError, StopIteration, ValueError):
+    pass
 PY
 )
+    if [[ "$detected_target" =~ ^ANR[[:space:]]+[0-9]+[[:space:]]+[0-9]+$ ]]; then
+        if (( quickstep_recovered == 0 )); then
+            echo "Detected Quickstep ANR dialog; tapping Close app and retrying HostActivity" >&2
+            adb shell input tap ${detected_target#ANR }
+            quickstep_recovered=1
+            sleep 2
+            adb shell am start -n dev.hermitm0nk.flowbubble.test/dev.hermitm0nk.flowbubble.HostActivity --ez focus false >/dev/null 2>&1 || true
+        fi
+    elif [[ "$detected_target" =~ ^EDITOR[[:space:]]+[0-9]+[[:space:]]+[0-9]+$ ]]; then
+        editor_coordinates=${detected_target#EDITOR }
+        break
+    fi
+    if (( attempt == 6 )); then
+        adb shell am start -n dev.hermitm0nk.flowbubble.test/dev.hermitm0nk.flowbubble.HostActivity --ez focus false >/dev/null 2>&1 || true
+    fi
+    sleep 1
+done
+if [[ ! "$editor_coordinates" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]]; then
+    echo "Failed to find a usable 'Write a message' editor in HostActivity after 12 UI dumps" >&2
+    exit 1
+fi
+adb exec-out screencap -p > "screenshots/unfocused-api-$api_level.png"
 adb shell input tap $editor_coordinates
 sleep 3
 adb shell uiautomator dump /sdcard/window.xml >/dev/null
