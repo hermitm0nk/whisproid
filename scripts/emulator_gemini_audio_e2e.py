@@ -143,6 +143,13 @@ def stage_synthetic_audio():
         raise RuntimeError("Debug synthetic audio harness did not report successful asset staging")
 
 
+def diagnostic_code(action):
+    output = adb("shell", "am", "broadcast", "-a", f"{APP}.{action}",
+                 "-n", TEST_BRIDGE, "-p", APP, timeout=20)
+    match = re.search(r"Broadcast completed: result=(\d+)", output)
+    return int(match.group(1)) if match else -1
+
+
 def run():
     api_key = os.environ.get("GOOGLE_AI_STUDIO_KEY", "")
     if not api_key:
@@ -172,6 +179,13 @@ def run():
             print("PASS: synthetic speech transcribed through the app microphone path and inserted into the external editor")
             return
         time.sleep(1.5)
+    print(f"Safe debug status: bubble={diagnostic_code('TEST_STATUS')}, "
+          f"history={diagnostic_code('TEST_HISTORY_COUNT')}")
+    if any(node.get("package") == TEST_APP for node in ui_tree().iter("node")):
+        screenshot = os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "whisproid-synthetic-host.png")
+        with open(screenshot, "wb") as image:
+            image.write(subprocess.run(["adb", "exec-out", "screencap", "-p"],
+                                       check=True, capture_output=True, timeout=20).stdout)
     raise RuntimeError("Expected synthetic transcript was not inserted into the external editor")
 
 

@@ -49,6 +49,18 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
     private var recordingMode = "tap"
     private var holdGestureActive = false
     private var lastError: String? = null
+    internal fun diagnosticCode(): Int {
+        val error = lastError
+        if (error != null) return when {
+            error.startsWith("Could not start microphone") -> 20
+            error.startsWith("Live API connection failed") -> 21
+            error.contains("final speech") -> 22
+            error.contains("No speech") -> 23
+            error.contains("setup", ignoreCase = true) -> 24
+            else -> 29
+        }
+        return when (state) { "ready" -> 10; "recording" -> 11; "transcribing" -> 12; else -> 19 }
+    }
     private val refresh = Runnable { updateVisibility() }
 
     override fun onServiceConnected() {
