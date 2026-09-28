@@ -38,6 +38,19 @@ async def run():
                 "mimeType": "audio/pcm;rate=16000",
             }}}))
             await asyncio.sleep(len(chunk) / 32000)
+        pre_end = []
+        # Hold the button for a quiet interval to see whether the model finalizes
+        # a segment before the explicit release signal.
+        for _ in range(12):
+            await asyncio.sleep(.25)
+            while True:
+                try:
+                    earlier = json.loads(await asyncio.wait_for(ws.recv(), .01))
+                except asyncio.TimeoutError:
+                    break
+                text = ((earlier.get("serverContent") or {}).get("inputTranscription") or {}).get("text", "").strip()
+                if text:
+                    pre_end.append(text)
         await ws.send(json.dumps({"realtimeInput": {"activityEnd": {}}}))
         finalized = []
         turn_complete = False
@@ -57,10 +70,10 @@ async def run():
                 turn_complete = True
             if turn_complete and finalized:
                 break
-    combined = " ".join(finalized).lower()
+    combined = " ".join(pre_end + finalized).lower()
     if "sky is blue" not in combined:
         raise AssertionError("Finalized transcription did not contain the expected speech")
-    print(f"Gemini Live finalized the expected spoken phrase; turnComplete={turn_complete}")
+    print(f"Gemini Live finalized expected speech; preEnd={len(pre_end)}, postEnd={len(finalized)}, turnComplete={turn_complete}")
 
 
 if __name__ == "__main__":
