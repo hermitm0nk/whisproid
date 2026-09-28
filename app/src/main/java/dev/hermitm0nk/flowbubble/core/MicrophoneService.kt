@@ -192,9 +192,11 @@ class MicrophoneService : Service() {
                 }
                 Thread({ capture(audio) }, "flowbubble-capture").start()
                 captureStarted = true
-                if (!synchronized(lock) { done }) {
-                    main.postDelayed(maxLength, 9 * 60_000L + 45_000L)
-                    main.postDelayed(setupTimeout, 15_000)
+                synchronized(lock) {
+                    if (!done) {
+                        main.postDelayed(maxLength, 9 * 60_000L + 45_000L)
+                        if (!setup) main.postDelayed(setupTimeout, 15_000)
+                    }
                 }
             } catch (e: Exception) {
                 if (!captureStarted) { try { recorder?.release() } catch (_: Exception) {}; recorder = null }

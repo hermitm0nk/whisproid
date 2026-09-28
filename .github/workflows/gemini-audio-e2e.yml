@@ -1,0 +1,52 @@
+name: Gemini audio end-to-end (experimental)
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/gemini-audio-e2e.yml'
+      - 'scripts/emulator_audio_e2e.sh'
+      - 'scripts/emulator_gemini_audio_e2e.py'
+      - 'scripts/proto/emulator_controller.proto'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audio-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOOGLE_AI_STUDIO_KEY: ${{ secrets.GOOGLE_AI_STUDIO_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install speech and gRPC tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq espeak-ng ffmpeg
+          python -m pip install grpcio grpcio-tools
+      - name: Create deterministic synthetic speech
+        run: |
+          espeak-ng -s 135 -w "$RUNNER_TEMP/whisproid-e2e-source.wav" 'Today is Monday and the sky is blue.'
+          ffmpeg -hide_banner -loglevel error -y -i "$RUNNER_TEMP/whisproid-e2e-source.wav" \
+            -ar 16000 -ac 1 -c:a pcm_s16le "$RUNNER_TEMP/whisproid-e2e.wav"
+      - name: Build debug app and test host
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -no-snapshot -grpc localhost:8554
+          script: bash scripts/emulator_audio_e2e.sh
