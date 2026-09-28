@@ -101,7 +101,7 @@ class MicrophoneService : Service() {
     private inner class Session(private val apiKey: String) {
         private val lock = Any()
         private val pending = ArrayDeque<String>()
-        private val finalized = mutableListOf<String>()
+        private val completion = TranscriptionCompletion()
         private var recorder: AudioRecord? = null
         private var socket: WebSocket? = null
         private var setup = false
@@ -109,7 +109,6 @@ class MicrophoneService : Service() {
         private var stopped = false
         private var done = false
         private var waitingForLast = false
-        private var turnCompleteSeen = false
         private val maxLength = Runnable { finish() }
         private val setupTimeout = Runnable { fail("Live API connection timed out before setup") }
         private val timeout = Runnable { finishResult() }
@@ -123,21 +122,13 @@ class MicrophoneService : Service() {
                 if (min <= 0) throw IllegalStateException("16 kHz microphone unavailable")
                 val audio = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000,
                     AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min, 6400))
-                if (audio.state != AudioRecord.STATE_INITIALIZED) throw IllegalStateException("Microphone unavailable")
                 recorder = audio
+                if (audio.state != AudioRecord.STATE_INITIALIZED) throw IllegalStateException("Microphone unavailable")
                 audio.startRecording()
-                Thread({ capture(audio) }, "flowbubble-capture").start()
-                captureStarted = true
-                main.postDelayed(maxLength, 9 * 60_000L + 45_000L)
-                main.postDelayed(setupTimeout, 15_000)
-            } catch (e: Exception) {
-                if (!captureStarted) { try { recorder?.release() } catch (_: Exception) {}; recorder = null }
-                fail("Could not start microphone: ${e.message}"); return
-            }
-            val url = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
-            val request = Request.Builder().url(url.toHttpUrl().newBuilder()
-                .addQueryParameter("key", apiKey).build()).build()
-            socket = client.newWebSocket(request, object : WebSocketListener() {
+                val url = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+                val request = Request.Builder().url(url.toHttpUrl().newBuilder()
+                    .addQueryParameter("key", apiKey).build()).build()
+                val connection = client.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     // Manual VAD marks button press and release. SMART yields polished dictation.
                     val config = JSONObject().put("setup", JSONObject()
@@ -145,7 +136,10 @@ class MicrophoneService : Service() {
                         .put("generationConfig", JSONObject().put("responseModalities", org.json.JSONArray().put("TEXT")))
                         .put("realtimeInputConfig", JSONObject().put("automaticActivityDetection", JSONObject().put("disabled", true)))
                         .put("inputAudioTranscription", JSONObject().put("mode", "SMART")))
-                    webSocket.send(config.toString())
+                    synchronized(lock) {
+                        if (done) { webSocket.cancel(); return }
+                        webSocket.send(config.toString())
+                    }
                 }
                 override fun onMessage(webSocket: WebSocket, text: String) {
                     try {
@@ -162,15 +156,9 @@ class MicrophoneService : Service() {
                             }
                             val content = message.optJSONObject("serverContent")
                             val transcript = content?.optJSONObject("inputTranscription")?.optString("text")?.trim().orEmpty()
-                            if (transcript.isNotEmpty()) {
-                                finalized.add(transcript)
-                                // The transcription API calls inputTranscription finalized; it
-                                // need not send a turnComplete event for every segment.
-                                if (ended) scheduleResult(2000)
-                            }
+                            if (completion.addFinal(transcript)) scheduleResult(2000)
                             if (content?.optBoolean("turnComplete") == true) {
-                                turnCompleteSeen = true
-                                if (ended) scheduleResult(2000)
+                                if (completion.markTurnComplete()) scheduleResult(2000)
                             }
                         }
                     } catch (_: Exception) { /* Malformed server frames cannot become text. */ }
@@ -181,11 +169,28 @@ class MicrophoneService : Service() {
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                     synchronized(lock) {
                         if (done) return
-                        if (ended && finalized.isNotEmpty()) scheduleResult(100)
-                        else fail("Live API closed before completion: $reason")
+                        if (completion.canCommitOnClose(code)) scheduleResult(100)
+                        else fail("Live API closed before completion (code $code): $reason")
                     }
                 }
-            })
+                })
+                synchronized(lock) {
+                    if (done) connection.cancel()
+                    else socket = connection
+                }
+                if (synchronized(lock) { done }) {
+                    audio.release(); recorder = null; return
+                }
+                Thread({ capture(audio) }, "flowbubble-capture").start()
+                captureStarted = true
+                if (!synchronized(lock) { done }) {
+                    main.postDelayed(maxLength, 9 * 60_000L + 45_000L)
+                    main.postDelayed(setupTimeout, 15_000)
+                }
+            } catch (e: Exception) {
+                if (!captureStarted) { try { recorder?.release() } catch (_: Exception) {}; recorder = null }
+                fail("Could not start microphone: ${e.message}")
+            }
         }
         private fun capture(audio: AudioRecord) {
             val buffer = ByteArray(3200) // 100 ms of 16-bit PCM mono at 16 kHz.
@@ -220,8 +225,12 @@ class MicrophoneService : Service() {
         private fun sendEnd(ws: WebSocket) {
             if (waitingForLast) return
             waitingForLast = true
-            ws.send("{\"realtimeInput\":{\"activityEnd\":{}}}")
-            scheduleResult(if (turnCompleteSeen) 2000 else 12_000)
+            completion.markEndSent()
+            if (!ws.send("{\"realtimeInput\":{\"activityEnd\":{}}}")) {
+                fail("Live API could not send the end of speech")
+                return
+            }
+            scheduleResult(12_000)
         }
         fun finish() {
             synchronized(lock) {
@@ -240,16 +249,16 @@ class MicrophoneService : Service() {
         }
         private fun scheduleResult(delayMs: Long) { main.removeCallbacks(timeout); main.postDelayed(timeout, delayMs) }
         private fun finishResult() {
-            val ready = synchronized(lock) { setup to finalized.isNotEmpty() }
+            val ready = synchronized(lock) { setup to completion.canCommit() }
             if (!ready.first || !ready.second) {
-                fail(if (!ready.first) "Live API did not complete setup" else "No finalized transcription was received")
+                fail(if (!ready.first) "Live API did not complete setup" else "Live API did not confirm final speech")
                 return
             }
             val result: String
             synchronized(lock) {
                 if (done) return
                 done = true; stopped = true
-                result = finalized.joinToString(" ").trim()
+                result = completion.text()
             }
             try { recorder?.stop() } catch (_: Exception) {}
             socket?.close(1000, "done"); main.removeCallbacks(maxLength); main.removeCallbacks(setupTimeout)
@@ -260,7 +269,7 @@ class MicrophoneService : Service() {
                 if (done) return
                 done = true; stopped = true
                 try { recorder?.stop() } catch (_: Exception) {}
-                finalized.joinToString(" ").trim()
+                completion.text()
             }
             socket?.cancel(); main.removeCallbacks(maxLength); main.removeCallbacks(setupTimeout); main.removeCallbacks(timeout)
             completed(this, partial, message)

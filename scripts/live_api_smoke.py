@@ -40,6 +40,7 @@ async def run():
             await asyncio.sleep(len(chunk) / 32000)
         await ws.send(json.dumps({"realtimeInput": {"activityEnd": {}}}))
         finalized = []
+        turn_complete = False
         deadline = asyncio.get_running_loop().time() + 30
         while asyncio.get_running_loop().time() < deadline:
             try:
@@ -52,12 +53,14 @@ async def run():
             text = (content.get("inputTranscription") or {}).get("text", "").strip()
             if text:
                 finalized.append(text)
-            if content.get("turnComplete") and finalized:
+            if content.get("turnComplete"):
+                turn_complete = True
+            if turn_complete and finalized:
                 break
     combined = " ".join(finalized).lower()
     if "sky is blue" not in combined:
         raise AssertionError("Finalized transcription did not contain the expected speech")
-    print("Gemini Live finalized the expected spoken phrase")
+    print(f"Gemini Live finalized the expected spoken phrase; turnComplete={turn_complete}")
 
 
 if __name__ == "__main__":
