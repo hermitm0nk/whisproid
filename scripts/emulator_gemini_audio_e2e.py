@@ -80,6 +80,16 @@ def editor_visible_with_phrase():
                for node in root.iter("node"))
 
 
+def external_editor_text():
+    root = ui_tree()
+    node = next((node for node in root.iter("node")
+                 if node.get("package") == TEST_APP
+                 and node.get("class") == "android.widget.EditText"), None)
+    if node is None:
+        raise RuntimeError("External editor was not visible")
+    return node.get("text") or ""
+
+
 def focused_external_editor():
     root = ui_tree()
     return any(node.get("package") == TEST_APP
@@ -212,6 +222,80 @@ def diagnostic_code(action):
     return int(match.group(1)) if match else -1
 
 
+def history_count():
+    return diagnostic_code("TEST_HISTORY_COUNT") - 100
+
+
+def wait_for_status(expected, timeout=10):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if diagnostic_code("TEST_STATUS") == expected:
+            return True
+        time.sleep(0.25)
+    return False
+
+
+def overlay_control_centers(width, density):
+    # renderNow right-aligns the expanded horizontal layout. Child widths are
+    # 58dp / 98dp / 58dp, with 5dp end margins on all three controls.
+    cancel_x = width - int((58 + 5 + 98 + 5 + 58 + 5 - 29) * density)
+    submit_x = width - int((29 + 5) * density)
+    center_y = int((105 + 29) * density)
+    return (cancel_x, center_y), (submit_x, center_y)
+
+
+def tap_recording_bubble(bubble_x, bubble_y):
+    if not focused_external_editor():
+        raise RuntimeError("Refusing tap: external EditText is not focused")
+    tap(bubble_x, bubble_y)
+    if not wait_for_status(11, timeout=10):
+        raise RuntimeError("Tap did not start the overlay recording session")
+    # Recording state is visible through diagnostics before renderNow has
+    # necessarily attached the expanded controls to the overlay.
+    time.sleep(0.4)
+
+
+def exercise_tap_cancel(bubble_x, bubble_y, cancel_center):
+    baseline_history = history_count()
+    baseline_text = external_editor_text()
+    stage_synthetic_audio()
+    tap_recording_bubble(bubble_x, bubble_y)
+    # No UiAutomator hierarchy reads while recording: they compete with the
+    # app's AccessibilityService connection and can cancel this session.
+    tap(*cancel_center)
+    if not wait_for_status(10, timeout=10):
+        raise RuntimeError("Cancel tap did not return dictation to ready")
+    if history_count() != baseline_history:
+        raise RuntimeError("Canceled tap session unexpectedly added transcript history")
+    if external_editor_text() != baseline_text:
+        raise RuntimeError("Canceled tap session unexpectedly inserted editor text")
+    print("PASS: real overlay tap-to-cancel left history and external editor unchanged")
+
+
+def exercise_tap_submit(bubble_x, bubble_y, submit_center, pcm_duration_ms):
+    baseline_history = history_count()
+    baseline_text = external_editor_text()
+    stage_synthetic_audio()
+    tap_recording_bubble(bubble_x, bubble_y)
+    # Synthetic audio is supplied to this recording session; wait only on
+    # shell diagnostics until submission/transcription has completed.
+    time.sleep((pcm_duration_ms + 1800) / 1000)
+    tap(*submit_center)
+    deadline = time.monotonic() + 35
+    while time.monotonic() < deadline:
+        if history_count() > baseline_history:
+            break
+        time.sleep(1)
+    if history_count() <= baseline_history:
+        raise RuntimeError("Tap-to-submit did not add a transcript to history")
+    if not wait_for_status(10, timeout=10):
+        raise RuntimeError("Tap-to-submit transcription did not return dictation to ready")
+    current_text = external_editor_text()
+    if PHRASE not in current_text.lower() or current_text == baseline_text:
+        raise RuntimeError("Tap-to-submit transcript was not inserted into the external editor")
+    print("PASS: real overlay tap-to-submit transcribed synthetic speech and inserted it")
+
+
 def save_safe_screen(name):
     root = ui_tree()
     # Never capture the app's password field in Settings.
@@ -238,13 +322,12 @@ def run():
     if not api_key:
         raise RuntimeError("GOOGLE_AI_STUDIO_KEY is not configured")
     install_and_prepare_app(api_key)
-    stage_synthetic_audio()
-
     width, height, density = display_size_and_density()
     bubble_size = int(58 * density)
     edge_margin = int(22 * density)
     bubble_x = width - edge_margin - bubble_size // 2
     bubble_y = int(105 * density) + bubble_size // 2
+    cancel_center, submit_center = overlay_control_centers(width, density)
     pcm_duration_ms = os.path.getsize("app/src/debug/assets/synthetic.pcm") // 32
     hold_duration_ms = max(8000, pcm_duration_ms + 1800)
     before = diagnostic_code("TEST_STATUS")
@@ -254,6 +337,16 @@ def run():
     save_safe_screen("whisproid-before-gesture.png")
     if before in (2, 3):
         raise RuntimeError(f"Dictation prerequisites unavailable (status {before})")
+
+    exercise_tap_cancel(bubble_x, bubble_y, cancel_center)
+    exercise_tap_submit(bubble_x, bubble_y, submit_center, pcm_duration_ms)
+
+    hold_baseline_history = history_count()
+    hold_baseline_text = external_editor_text()
+
+    # Stage anew for the hold/release session: the debug harness is consumed
+    # once per capture session.
+    stage_synthetic_audio()
 
     # The debug receiver arms the in-app substitution harness; this remains a
     # real accessibility-service hold/release gesture through AudioRecord.
@@ -289,8 +382,9 @@ def run():
         # UiAutomator acquires a competing accessibility automation connection.
         # Do not dump the hierarchy until the app has completed transcription;
         # doing so mid-session can interrupt its accessibility service.
-        if diagnostic_code("TEST_HISTORY_COUNT") > 100:
-            if not editor_visible_with_phrase():
+        if history_count() > hold_baseline_history:
+            current_text = external_editor_text()
+            if len(current_text) <= len(hold_baseline_text) or PHRASE not in current_text.lower():
                 raise RuntimeError("Transcript reached history but not the external editor")
             save_safe_screen("whisproid-inserted-gesture.png")
             if not history_contains_phrase():
