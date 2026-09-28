@@ -117,9 +117,13 @@ def install_and_prepare_app(api_key):
     tap(save_x, save_y)
     time.sleep(0.5)
 
-    # Return from the in-activity Settings panel through the app's normal UI;
-    # restarting the process can leave the accessibility service detached.
-    adb("shell", "input", "keyevent", "4")
+    # Settings is an in-activity panel; Android Back would close MainActivity.
+    # Use its explicit navigation control instead.
+    back = next((item for item in ui_tree().iter("node")
+                 if item.get("content-desc") == "Back to home"), None)
+    if back is None:
+        raise RuntimeError("Settings back-to-home control was not visible")
+    tap(*bounds_center(back))
     time.sleep(0.5)
     if not any(node.get("text") == "Ready to dictate" for node in ui_tree().iter("node")):
         raise RuntimeError("Encrypted API key was not saved or Back did not return to Home")
