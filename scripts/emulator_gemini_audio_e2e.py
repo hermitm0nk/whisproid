@@ -276,13 +276,18 @@ def exercise_tap_cancel(bubble_x, bubble_y, cancel_center):
     print("PASS: real overlay tap-to-cancel left history and external editor unchanged")
 
 
-def exercise_tap_submit(bubble_x, bubble_y, submit_center):
+def exercise_tap_submit(bubble_x, bubble_y, submit_center, pcm_duration_ms):
     baseline_history = history_count()
     baseline_text = external_editor_text()
     stage_synthetic_audio()
     tap_recording_bubble(bubble_x, bubble_y)
     if diagnostic_code("TEST_STATUS") != 11:
         raise RuntimeError("Tap-to-submit recording ended before the submit control was pressed")
+    # Smaller 40 ms AudioRecord reads are genuinely paced on some emulators.
+    # Do not submit before the synthetic phrase has finished playing.
+    time.sleep(pcm_duration_ms / 1000 + 1)
+    if diagnostic_code("TEST_STATUS") != 11:
+        raise RuntimeError("Recording did not remain active for the synthetic phrase")
     capture_external_editor_screen("whisproid-recording-gesture.png")
     tap(*submit_center)
     if diagnostic_code("TEST_STATUS") == 12:
@@ -359,7 +364,7 @@ def run():
         raise RuntimeError(f"Dictation prerequisites unavailable (status {before})")
 
     exercise_tap_cancel(bubble_x, bubble_y, cancel_center)
-    exercise_tap_submit(bubble_x, bubble_y, submit_center)
+    exercise_tap_submit(bubble_x, bubble_y, submit_center, pcm_duration_ms)
 
     hold_baseline_history = history_count()
     hold_baseline_text = external_editor_text()
