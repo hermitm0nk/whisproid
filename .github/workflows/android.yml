@@ -55,7 +55,7 @@ jobs:
           KEYSTORE="$RUNNER_TEMP/whisproid-production-signing.jks"
           UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
           ALIGNED_APK="$RUNNER_TEMP/app-release-aligned.apk"
-          SIGNED_APK="$RUNNER_TEMP/whisproid-v0.2.0.apk"
+          SIGNED_APK="$RUNNER_TEMP/whisproid-v0.2.1.apk"
           trap 'rm -f "$KEYSTORE" "$ALIGNED_APK"' EXIT
           printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
           test -s "$KEYSTORE"
@@ -119,8 +119,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           APK_PATH: ${{ steps.release-apk.outputs.apk }}
         run: |
-          RELEASE_TAG="v0.2.0"
-          NOTES="Production-signed, non-debuggable release APK from commit $GITHUB_SHA. It uses the stable signing key configured in GitHub Actions secrets. Future updates require the same key and a higher versionCode. Earlier v0.1.x test releases had ephemeral signing keys, so they cannot be updated in place; uninstall the old build once (back up transcript history first, since uninstall erases local data). Android 11/15/16 emulator and Gemini Live CI checks must pass before this release is published."
+          RELEASE_TAG="v0.2.1"
+          NOTES="Production-signed, non-debuggable release APK from commit $GITHUB_SHA. It uses the same pinned signing certificate as v0.2.0 and versionCode 5, so it updates v0.2.0 in place. Earlier v0.1.x test releases had ephemeral signing keys; uninstall those old builds once (copy transcript history first, since uninstall erases local data). Android 11/15/16 emulator and Gemini Live CI checks passed before publication."
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             existing="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
             target="$(jq -r '.target_commitish' <<< "$existing")"
