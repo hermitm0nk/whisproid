@@ -49,6 +49,14 @@ class OverlayScreenshotTests(unittest.TestCase):
         draw.line((840, 400, 1013, 400), fill=(120, 85, 150), width=4)
         self.assertEqual(bubble_evidence(self.before, self.after)[0], 0)
 
+    def test_neutral_rectangle_with_small_lavender_patch_fails(self):
+        before = Image.new("RGB", (1080, 2400), (180, 180, 180))
+        after = before.copy()
+        draw = ImageDraw.Draw(after)
+        draw.rectangle((850, 325, 1000, 475), fill=(151, 151, 151))
+        draw.rectangle((900, 375, 951, 426), fill=(175, 168, 182))
+        self.assertEqual(bubble_evidence(before, after)[0], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -80,7 +80,14 @@ class MicrophoneService : Service() {
     fun cancel() { session?.cancel() }
     private fun completed(item: Session, text: String?, error: String?) {
         main.post {
-            if (session !== item) return@post
+            when (completionRoute(session === item, text)) {
+                CompletionRoute.SAVE_ONLY -> {
+                    HistoryStore(this).use { it.add(text!!) }
+                    return@post
+                }
+                CompletionRoute.IGNORE -> return@post
+                CompletionRoute.DELIVER -> Unit
+            }
             session = null
             when {
                 error != null -> {

@@ -2,11 +2,6 @@ name: Gemini audio end-to-end (experimental)
 on:
   push:
     branches: [main]
-    paths:
-      - '.github/workflows/gemini-audio-e2e.yml'
-      - 'scripts/emulator_audio_e2e.sh'
-      - 'scripts/emulator_gemini_audio_e2e.py'
-      - 'app/src/main/java/dev/hermitm0nk/flowbubble/core/**'
   workflow_dispatch:
 permissions:
   contents: read

@@ -81,7 +81,9 @@ def bubble_evidence(unfocused, focused):
         shape_ok = (count >= min_area and box_w >= size * .35 and box_h >= size * .35
                     and max(box_w, box_h) <= size * 1.1
                     and min(box_w, box_h) / max(box_w, box_h) >= .55)
-        score = count if shape_ok and colored >= max(80, count * .10) else 0
+        # Most of the changed component must carry the bubble's lavender cast;
+        # a small tinted patch inside a neutral rectangle is not sufficient.
+        score = count if shape_ok and colored >= max(80, count * .60) else 0
         if score > best[0]:
             best = score, (density, count, colored, box)
     return best
