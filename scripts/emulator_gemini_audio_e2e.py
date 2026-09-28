@@ -268,8 +268,7 @@ def run():
     try:
         time.sleep(1)
         during_status = diagnostic_code("TEST_STATUS")
-        during_focus = int(focused_external_editor())
-        print(f"Safe during-hold diagnostics: status={during_status}, focused_external_editor={during_focus}")
+        print(f"Safe during-hold diagnostics: status={during_status}")
         try:
             _, _ = swipe.communicate(timeout=hold_duration_ms / 1000 + 10)
         except subprocess.TimeoutExpired:
@@ -282,13 +281,17 @@ def run():
         if swipe.poll() is None:
             swipe.kill()
             swipe.communicate()
-    after_focus = int(focused_external_editor())
-    print(f"Safe after-gesture diagnostics: focused_external_editor={after_focus}, "
-          f"status={diagnostic_code('TEST_STATUS')}, cancel_code={diagnostic_code('TEST_CANCEL_CODE')}")
+    print(f"Safe after-gesture diagnostics: status={diagnostic_code('TEST_STATUS')}, "
+          f"cancel_code={diagnostic_code('TEST_CANCEL_CODE')}")
 
     deadline = time.monotonic() + 35
     while time.monotonic() < deadline:
-        if editor_visible_with_phrase():
+        # UiAutomator acquires a competing accessibility automation connection.
+        # Do not dump the hierarchy until the app has completed transcription;
+        # doing so mid-session can interrupt its accessibility service.
+        if diagnostic_code("TEST_HISTORY_COUNT") > 100:
+            if not editor_visible_with_phrase():
+                raise RuntimeError("Transcript reached history but not the external editor")
             if not history_contains_phrase():
                 raise RuntimeError("Transcript was inserted but not visible in local history")
             print("PASS: synthetic speech transcribed through the app microphone path and inserted into the external editor")
