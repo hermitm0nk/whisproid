@@ -59,6 +59,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
             error.contains("setup", ignoreCase = true) -> 24
             else -> 29
         }
+        if (MicrophoneService.instance == null) return 3
         return when (state) { "ready" -> 10; "recording" -> 11; "transcribing" -> 12; else -> 19 }
     }
     private val refresh = Runnable { updateVisibility() }

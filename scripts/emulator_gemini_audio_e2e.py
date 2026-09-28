@@ -158,6 +158,18 @@ def diagnostic_code(action):
     return int(match.group(1)) if match else -1
 
 
+def save_safe_screen(name):
+    root = ui_tree()
+    # Never capture the app's password field in Settings.
+    if any(node.get("package") == APP and node.get("class") == "android.widget.EditText"
+           for node in root.iter("node")):
+        return
+    screenshot = os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), name)
+    with open(screenshot, "wb") as image:
+        image.write(subprocess.run(["adb", "exec-out", "screencap", "-p"],
+                                   check=True, capture_output=True, timeout=20).stdout)
+
+
 def run():
     api_key = os.environ.get("GOOGLE_AI_STUDIO_KEY", "")
     if not api_key:
@@ -172,6 +184,10 @@ def run():
     bubble_y = int(105 * density) + bubble_size // 2
     pcm_duration_ms = os.path.getsize("app/src/debug/assets/synthetic.pcm") // 32
     hold_duration_ms = max(4000, pcm_duration_ms + 1800)
+    before = diagnostic_code("TEST_STATUS")
+    save_safe_screen("whisproid-before-gesture.png")
+    if before in (2, 3):
+        raise RuntimeError(f"Dictation prerequisites unavailable (status {before})")
 
     # The debug receiver arms the in-app substitution harness; this remains a
     # real accessibility-service hold/release gesture through AudioRecord.
@@ -189,11 +205,7 @@ def run():
         time.sleep(1.5)
     print(f"Safe debug status: bubble={diagnostic_code('TEST_STATUS')}, "
           f"history={diagnostic_code('TEST_HISTORY_COUNT')}")
-    if any(node.get("package") == TEST_APP for node in ui_tree().iter("node")):
-        screenshot = os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "whisproid-synthetic-host.png")
-        with open(screenshot, "wb") as image:
-            image.write(subprocess.run(["adb", "exec-out", "screencap", "-p"],
-                                       check=True, capture_output=True, timeout=20).stdout)
+    save_safe_screen("whisproid-after-gesture.png")
     raise RuntimeError("Expected synthetic transcript was not inserted into the external editor")
 
 

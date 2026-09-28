@@ -53,5 +53,5 @@ jobs:
         if: failure()
         with:
           name: synthetic-host-diagnostic
-          path: ${{ runner.temp }}/whisproid-synthetic-host.png
+          path: ${{ runner.temp }}/whisproid-*-gesture.png
           if-no-files-found: ignore
