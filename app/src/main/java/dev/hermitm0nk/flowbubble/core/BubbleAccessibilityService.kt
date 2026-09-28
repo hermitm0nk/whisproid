@@ -49,6 +49,8 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
     private var recordingMode = "tap"
     private var holdGestureActive = false
     private var lastError: String? = null
+    internal var lastCancelCode = 0
+        private set
     private val redraw = Runnable { renderNow() }
     internal fun diagnosticCode(): Int {
         val error = lastError
@@ -76,9 +78,9 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
         main.removeCallbacks(refresh)
         main.postDelayed(refresh, 120)
     }
-    override fun onInterrupt() { cancelAndHide() }
+    override fun onInterrupt() { lastCancelCode = 5; cancelAndHide() }
     override fun onDestroy() {
-        cancelAndHide()
+        lastCancelCode = 6; cancelAndHide()
         if (instance === this) instance = null
         if (MicrophoneService.instance?.listener === this) MicrophoneService.instance?.listener = null
         super.onDestroy()
@@ -109,7 +111,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
     private fun updateVisibility() {
         val focused = focusedEditor()
         if (focused == null) {
-            if (state == "recording") MicrophoneService.instance?.cancel()
+            if (state == "recording") { lastCancelCode = 1; MicrophoneService.instance?.cancel() }
             if (state == "transcribing") targetInvalidated = true
             target = if (state == "transcribing") target else null
             hide(); return
@@ -118,7 +120,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
             val original = target
             if (original == null || original != focused || !original.refresh() || !original.isFocused) {
                 targetInvalidated = true
-                if (state == "recording") { MicrophoneService.instance?.cancel(); state = "ready" }
+                if (state == "recording") { lastCancelCode = 2; MicrophoneService.instance?.cancel(); state = "ready" }
             }
         }
         if (state == "ready" || target == null) { target = focused; targetWindow = focused.windowId }
@@ -202,7 +204,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
                         MotionEvent.ACTION_CANCEL -> {
                             main.removeCallbacks(hold)
                             holdGestureActive = false
-                            if (holding) { transcriptGeneration++; MicrophoneService.instance?.cancel() }
+                            if (holding) { lastCancelCode = 3; transcriptGeneration++; MicrophoneService.instance?.cancel() }
                             state = "ready"; render()
                         }
                         MotionEvent.ACTION_UP -> {
@@ -222,7 +224,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
             layout.addView(label)
         } else {
             val cancel = button("×", "Cancel dictation", color, size, dp(size / 2).toFloat())
-            cancel.setOnClickListener { transcriptGeneration++; MicrophoneService.instance?.cancel(); state = "ready"; render() }
+            cancel.setOnClickListener { lastCancelCode = 4; transcriptGeneration++; MicrophoneService.instance?.cancel(); state = "ready"; render() }
             layout.addView(cancel)
             val meter = button(if (state == "recording") "••••••" else "…", state, color,
                 if (settings.bubbleStyle == "pill") size * 2 else size + 40, dp(size / 2).toFloat())
@@ -261,6 +263,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
         }
         mic.listener = this
         lastError = null
+        lastCancelCode = 0
         targetInvalidated = false
         if (mic.begin()) { state = "recording"; if (!holdGestureActive) render() }
         else holdGestureActive = false

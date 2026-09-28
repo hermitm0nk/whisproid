@@ -283,7 +283,8 @@ def run():
             swipe.kill()
             swipe.communicate()
     after_focus = int(focused_external_editor())
-    print(f"Safe after-gesture diagnostics: focused_external_editor={after_focus}")
+    print(f"Safe after-gesture diagnostics: focused_external_editor={after_focus}, "
+          f"status={diagnostic_code('TEST_STATUS')}, cancel_code={diagnostic_code('TEST_CANCEL_CODE')}")
 
     deadline = time.monotonic() + 35
     while time.monotonic() < deadline:
@@ -296,7 +297,8 @@ def run():
     after_pid = adb("shell", "pidof", APP).strip()
     print(f"Safe debug status: bubble={diagnostic_code('TEST_STATUS')}, "
           f"history={diagnostic_code('TEST_HISTORY_COUNT')}, "
-          f"process_changed={before_pid != after_pid}")
+          f"process_changed={before_pid != after_pid}, "
+          f"cancel_code={diagnostic_code('TEST_CANCEL_CODE')}")
     report_safe_app_crash(api_key)
     save_safe_screen("whisproid-after-gesture.png")
     raise RuntimeError("Expected synthetic transcript was not inserted into the external editor")

@@ -13,6 +13,7 @@ class TestBridgeReceiver : BroadcastReceiver() {
         const val AUDIO = "dev.hermitm0nk.flowbubble.TEST_AUDIO"
         const val STATUS = "dev.hermitm0nk.flowbubble.TEST_STATUS"
         const val HISTORY_COUNT = "dev.hermitm0nk.flowbubble.TEST_HISTORY_COUNT"
+        const val CANCEL_CODE = "dev.hermitm0nk.flowbubble.TEST_CANCEL_CODE"
         const val PHRASE = "Inserted from accessibility test"
     }
 
@@ -32,6 +33,7 @@ class TestBridgeReceiver : BroadcastReceiver() {
             } catch (_: Exception) { 2 }
             STATUS -> BubbleAccessibilityService.instance?.diagnosticCode() ?: 2
             HISTORY_COUNT -> 100 + HistoryStore(context).use { it.all().size.coerceAtMost(99) }
+            CANCEL_CODE -> BubbleAccessibilityService.instance?.lastCancelCode ?: 99
             else -> 0
         }
     }
