@@ -1,6 +1,8 @@
 package dev.hermitm0nk.flowbubble
 
 import android.graphics.Bitmap
+import android.content.ContentValues
+import android.provider.MediaStore
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
@@ -16,8 +18,6 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
-import java.io.FileOutputStream
 
 @RunWith(AndroidJUnit4::class)
 class AppSmokeTest {
@@ -65,9 +65,13 @@ class AppSmokeTest {
     private fun captureScreenshot(name: String) {
         val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
             ?: throw AssertionError("Could not capture $name screenshot")
-        val directory = File(context.getExternalFilesDir(null), "screenshots")
-        check(directory.mkdirs() || directory.isDirectory) { "Could not create screenshot directory" }
-        FileOutputStream(File(directory, "$name.png")).use { output ->
+        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, "whisproid-$name.png")
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Whisproid")
+            }) ?: throw AssertionError("Could not create $name screenshot")
+        context.contentResolver.openOutputStream(uri)!!.use { output ->
             check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) { "Could not save $name screenshot" }
         }
         bitmap.recycle()
