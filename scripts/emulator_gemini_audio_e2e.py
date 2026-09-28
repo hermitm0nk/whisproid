@@ -116,12 +116,20 @@ def install_and_prepare_app(api_key):
     time.sleep(0.5)
     if not any(node.get("text") == "Ready to dictate" for node in ui_tree().iter("node")):
         raise RuntimeError("Encrypted API key was not saved before the app restart")
+    # force-stop tears down the enabled accessibility service. Toggle the
+    # global state so Android binds it again after the app is relaunched.
+    adb("shell", "settings", "put", "secure", "accessibility_enabled", "0")
+    adb("shell", "settings", "put", "secure", "enabled_accessibility_services",
+        f"{APP}/{APP}.core.BubbleAccessibilityService")
+    adb("shell", "settings", "put", "secure", "accessibility_enabled", "1")
     # Start the microphone foreground service from this visible activity.
     tap_text("Enable dictation")
     time.sleep(1)
     adb("shell", "am", "start", "-W", "-n",
         f"{TEST_APP}/dev.hermitm0nk.flowbubble.HostActivity", "--ez", "focus", "true", timeout=30)
-    time.sleep(2)
+    time.sleep(3)
+    if diagnostic_code("TEST_STATUS") == 2:
+        raise RuntimeError("Accessibility service did not rebind after app restart")
 
 
 def display_size_and_density():
