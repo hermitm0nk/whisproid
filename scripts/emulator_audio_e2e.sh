@@ -4,8 +4,6 @@ set -euo pipefail
 : "${GOOGLE_AI_STUDIO_KEY:?GOOGLE_AI_STUDIO_KEY secret is required}"
 : "${RUNNER_TEMP:?RUNNER_TEMP is required}"
 
-./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
-
 PROTO_OUT="$RUNNER_TEMP/emulator-grpc-proto"
 mkdir -p "$PROTO_OUT"
 PROTO_INCLUDE="$(python -c 'import pathlib, grpc_tools; print(pathlib.Path(grpc_tools.__file__).parent / "_proto")')"

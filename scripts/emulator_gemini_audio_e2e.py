@@ -115,10 +115,14 @@ def install_and_prepare_app(api_key):
     tap(save_x, save_y)
     time.sleep(0.5)
 
-    # Bring a fresh, visible MainActivity to the foreground before starting the
-    # microphone foreground service, satisfying Android 14+ while-in-use rules.
+    # The Settings panel is an in-activity view. Reopening the launcher intent
+    # can reuse that same screen, so restart the process to get a fresh Home.
+    adb("shell", "am", "force-stop", APP)
     adb("shell", "am", "start", "-W", "-n", f"{APP}/{APP}.ui.MainActivity", timeout=30)
     time.sleep(0.5)
+    if not any(node.get("text") == "Ready to dictate" for node in ui_tree().iter("node")):
+        raise RuntimeError("Encrypted API key was not saved before the app restart")
+    # Start the microphone foreground service from this visible activity.
     tap_text("Enable dictation")
     time.sleep(1)
     adb("shell", "am", "start", "-W", "-n",
