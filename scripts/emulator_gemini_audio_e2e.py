@@ -53,6 +53,25 @@ def tap_text(text):
     tap(*bounds_center(node))
 
 
+def wait_for_node(predicate, timeout=10, interval=0.4):
+    """Return a freshly-read UI node before the deadline, never retaining stale nodes."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        root = ui_tree()
+        node = next((item for item in root.iter("node") if predicate(item)), None)
+        if node is not None:
+            return node
+        time.sleep(interval)
+    return None
+
+
+def tap_text_when_visible(text, timeout=10):
+    node = wait_for_node(lambda item: item.get("text") == text, timeout=timeout)
+    if node is None:
+        raise RuntimeError(f"Expected control is not visible: {text}")
+    tap(*bounds_center(node))
+
+
 def editor_visible_with_phrase():
     root = ui_tree()
     return any(node.get("package") == TEST_APP
@@ -71,15 +90,12 @@ def focused_external_editor():
 
 def history_contains_phrase():
     adb("shell", "am", "start", "-W", "-n", f"{APP}/{APP}.ui.MainActivity")
-    root = ui_tree()
-    history = next((node for node in root.iter("node")
-                    if (node.get("text") or "").startswith("Transcript history (")), None)
+    history = wait_for_node(lambda node: (node.get("text") or "").startswith("Transcript history ("))
     if history is None:
         raise RuntimeError("Transcript history control was not visible")
     tap(*bounds_center(history))
-    return any(PHRASE in (node.get("text") or "").lower()
-               for node in ui_tree().iter("node")
-               if node.get("package") == APP)
+    return wait_for_node(lambda node: node.get("package") == APP
+                         and PHRASE in (node.get("text") or "").lower()) is not None
 
 
 def install_and_prepare_app(api_key):
@@ -97,14 +113,28 @@ def install_and_prepare_app(api_key):
     adb("shell", "settings", "put", "secure", "accessibility_enabled", "1")
 
     adb("shell", "am", "start", "-W", "-n", f"{APP}/{APP}.ui.MainActivity", timeout=30)
-    time.sleep(1)
-    tap_text("API key and bubble appearance")
+    tap_text_when_visible("API key and bubble appearance", timeout=15)
 
-    root = ui_tree()
-    field = next((item for item in root.iter("node")
-                  if item.get("class") == "android.widget.EditText"), None)
-    save = next((item for item in root.iter("node")
-                 if item.get("text") == "Save API key"), None)
+    # The Settings panel can take a moment to attach its controls. Re-dump on
+    # every poll so coordinates always come from the same, current hierarchy.
+    deadline = time.monotonic() + 15
+    field = save = None
+    last_settings_tap = 0.0
+    while time.monotonic() < deadline:
+        root = ui_tree()
+        field = next((item for item in root.iter("node")
+                      if item.get("class") == "android.widget.EditText"), None)
+        save = next((item for item in root.iter("node")
+                     if item.get("text") == "Save API key"), None)
+        if field is not None and save is not None:
+            break
+        home_settings = next((item for item in root.iter("node")
+                              if item.get("text") == "API key and bubble appearance"), None)
+        if home_settings is not None and time.monotonic() - last_settings_tap > 2:
+            tap(*bounds_center(home_settings))
+            last_settings_tap = time.monotonic()
+        field = save = None
+        time.sleep(0.4)
     if field is None or save is None:
         raise RuntimeError("Could not find the API key field and Save button")
     save_x, save_y = bounds_center(save)
@@ -114,30 +144,41 @@ def install_and_prepare_app(api_key):
     adb("shell", "input", "text", api_key)
     adb("shell", "input", "keyevent", "4")
     time.sleep(0.3)
+    # Re-read Save after keyboard dismissal; old coordinates may no longer be valid.
+    save = wait_for_node(lambda item: item.get("text") == "Save API key", timeout=5)
+    if save is None:
+        raise RuntimeError("Save API key button was not visible after dismissing the keyboard")
+    save_x, save_y = bounds_center(save)
     tap(save_x, save_y)
-    time.sleep(0.5)
 
     # Settings is an in-activity panel; Android Back would close MainActivity.
     # Use its explicit navigation control instead.
-    back = next((item for item in ui_tree().iter("node")
-                 if item.get("content-desc") == "Back to home"), None)
+    back = wait_for_node(lambda item: item.get("content-desc") == "Back to home", timeout=10)
     if back is None:
         raise RuntimeError("Settings back-to-home control was not visible")
     tap(*bounds_center(back))
-    time.sleep(0.5)
-    if not any(node.get("text") == "Ready to dictate" for node in ui_tree().iter("node")):
+    if wait_for_node(lambda node: node.get("text") == "Ready to dictate", timeout=10) is None:
         raise RuntimeError("Encrypted API key was not saved or Back did not return to Home")
     # Start the microphone foreground service from this visible activity.
     tap_text("Enable dictation")
-    time.sleep(1)
     start_output = adb("shell", "am", "start", "-n",
                        f"{TEST_APP}/dev.hermitm0nk.flowbubble.HostActivity",
                        "--ez", "focus", "false", timeout=30)
-    time.sleep(3)
     try:
-        tap_text("Write a message")
-        time.sleep(1)
-        if not focused_external_editor():
+        deadline = time.monotonic() + 15
+        focused = False
+        while time.monotonic() < deadline:
+            if focused_external_editor():
+                focused = True
+                break
+            editor = wait_for_node(
+                lambda node: node.get("package") == TEST_APP
+                and node.get("text") == "Write a message", timeout=1
+            )
+            if editor is not None:
+                tap(*bounds_center(editor))
+            time.sleep(0.4)
+        if not focused:
             raise RuntimeError("HostActivity does not expose a focused external EditText")
     except RuntimeError as error:
         raise RuntimeError(f"{error}; safe HostActivity start stdout: {start_output.strip()!r}") from None
