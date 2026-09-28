@@ -288,7 +288,18 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
             layout.addView(meter)
             if (recordingMode == "tap" && state == "recording") {
                 val submit = button("✓", "Submit dictation", 0xff653783.toInt(), size, dp(size / 2).toFloat())
-                submit.setOnClickListener { if (state == "recording") MicrophoneService.instance?.finish() }
+                submit.setOnClickListener {
+                    if (state == "recording") {
+                        // Show progress at the gesture itself. Waiting for the
+                        // service callback can leave the old meter visible for
+                        // several frames when Gemini finalizes very quickly.
+                        state = "transcribing"
+                        meter.visual = BubbleButton.Visual.SPINNER
+                        meter.contentDescription = "Transcribing"
+                        render()
+                        MicrophoneService.instance?.finish()
+                    }
+                }
                 layout.addView(submit)
             }
         }

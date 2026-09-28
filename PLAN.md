@@ -12,7 +12,8 @@
 - [x] Independent v0.2.0 review completed; fixed fork-PR signing-secrets failure and the 12-second delay for a final segment emitted before button release.
 - [x] Add CI screenshot capture of recording, hold, and transcribing overlay states without reading the accessibility hierarchy mid-session.
 - [x] Secret-backed app-to-Gemini-to-editor tap/cancel, tap/submit, and hold/release test passed after pacing the synthetic phrase; Android 11/15/16 emulator matrix and Live API integration passed on `acdac61`. Recording and held-state screenshots show the waveform.
-- [ ] Capture the brief transcribing spinner immediately after Submit and inspect its screenshot. Production signing remains blocked on missing secrets.
+- [x] Latest CI passed all emulator and secret-backed Gemini tests. The screenshot immediately after Submit caught the old waveform for one frame, so switch the visible meter to spinner synchronously on Submit before the service callback.
+- [ ] Verify the spinner screenshot and stable-signed production release. Signing secrets were configured by the repository owner after the earlier missing-secret runs.
 
 ## 0.1.2 scope
 
