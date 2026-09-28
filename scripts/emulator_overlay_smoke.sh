@@ -18,10 +18,6 @@ sleep 3
 adb shell uiautomator dump /sdcard/window.xml >/dev/null
 adb shell cat /sdcard/window.xml > "screenshots/unfocused-api-$api_level.xml"
 adb exec-out screencap -p > "screenshots/unfocused-api-$api_level.png"
-if grep -q 'Hold to dictate' "screenshots/unfocused-api-$api_level.xml"; then
-    echo 'Overlay shown without an active text field'
-    test_status=1
-fi
 editor_coordinates=$(python3 - "screenshots/unfocused-api-$api_level.xml" <<'PY'
 import re
 import sys
@@ -38,9 +34,10 @@ sleep 3
 adb shell uiautomator dump /sdcard/window.xml >/dev/null
 adb shell cat /sdcard/window.xml > "screenshots/focused-api-$api_level.xml"
 adb exec-out screencap -p > "screenshots/focused-api-$api_level.png"
-if ! grep -q 'Hold to dictate' "screenshots/focused-api-$api_level.xml"; then
-    echo 'Overlay absent from a focused external editor'
-    test_status=1
-fi
+python3 scripts/check_overlay_screenshots.py \
+    "screenshots/unfocused-api-$api_level.png" \
+    "screenshots/focused-api-$api_level.png" \
+    "screenshots/unfocused-api-$api_level.xml" \
+    "screenshots/focused-api-$api_level.xml" || test_status=1
 adb logcat -d -t 500 -v brief > "screenshots/logcat-api-$api_level.txt" || true
 exit "$test_status"

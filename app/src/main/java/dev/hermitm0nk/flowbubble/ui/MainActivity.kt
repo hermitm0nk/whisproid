@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
@@ -56,9 +57,19 @@ class MainActivity : Activity() {
         val scroller = ScrollView(this).apply { isFillViewport = true; addView(root) }
         setContentView(scroller)
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        if (title != "Whisproid") Button(this).apply {
-            text = "‹"; isAllCaps = false; setOnClickListener { showHome() }
-        }.also { header.addView(it) }
+        if (title != "Whisproid") TextView(this).apply {
+            text = "‹"
+            textSize = 32f
+            gravity = Gravity.CENTER
+            contentDescription = "Back to home"
+            isClickable = true
+            isFocusable = true
+            minimumWidth = dp(48)
+            minimumHeight = dp(48)
+            background = rounded(surface, 14)
+            setTextColor(ink)
+            setOnClickListener { showHome() }
+        }.also { header.addView(it, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(12) }) }
         text(title, 25, true).also { header.addView(it, LinearLayout.LayoutParams(0, -2, 1f)) }
         root.addView(header)
         return root
@@ -136,8 +147,12 @@ class MainActivity : Activity() {
         root.addView(text("Style", 14, true), spaced())
         val styles = listOf("orb" to "Orb", "pill" to "Pill", "square" to "Soft square")
         val radioGroup = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
+        val radioTint = ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+            intArrayOf(accent, if (settings.darkMode) 0xffb9b2ca.toInt() else 0xff696571.toInt())
+        )
         styles.forEach { (value, label) ->
-            val radio = RadioButton(this).apply { text = label; setTextColor(ink); isChecked = settings.bubbleStyle == value; setOnClickListener { settings.bubbleStyle = value } }
+            val radio = RadioButton(this).apply { text = label; setTextColor(ink); buttonTintList = radioTint; isChecked = settings.bubbleStyle == value; setOnClickListener { settings.bubbleStyle = value } }
             radioGroup.addView(radio)
         }
         root.addView(radioGroup)
