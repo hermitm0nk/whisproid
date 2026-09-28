@@ -10,6 +10,7 @@
 - [x] Replace per-run ephemeral release signing with required persistent GitHub Actions signing secrets; bump versionCode to 4.
 - [ ] Configure the four signing secrets, build/verify the production signed APK in CI, and publish v0.2.0. Previous ephemeral test installs require one uninstall; future same-key versions can update.
 - [x] Independent v0.2.0 review completed; fixed fork-PR signing-secrets failure and the 12-second delay for a final segment emitted before button release.
+- [x] Add CI screenshot capture of recording, hold, and transcribing overlay states without reading the accessibility hierarchy mid-session.
 - [ ] Compile/lint/test the changes in CI; inspect new UI screenshots and release-signing outcome.
 
 ## 0.1.2 scope
