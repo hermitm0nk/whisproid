@@ -21,7 +21,6 @@ import dev.hermitm0nk.flowbubble.data.SettingsStore
 import dev.hermitm0nk.flowbubble.data.HistoryStore
 import dev.hermitm0nk.flowbubble.ui.MainActivity
 import okhttp3.OkHttpClient
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
@@ -125,9 +124,7 @@ class MicrophoneService : Service() {
                 recorder = audio
                 if (audio.state != AudioRecord.STATE_INITIALIZED) throw IllegalStateException("Microphone unavailable")
                 audio.startRecording()
-                val url = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
-                val request = Request.Builder().url(url.toHttpUrl().newBuilder()
-                    .addQueryParameter("key", apiKey).build()).build()
+                val request = Request.Builder().url(liveEndpoint(apiKey)).build()
                 val connection = client.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     // Manual VAD marks button press and release. SMART yields polished dictation.
