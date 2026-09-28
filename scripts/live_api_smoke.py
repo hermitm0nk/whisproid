@@ -23,10 +23,17 @@ async def run():
         "realtimeInputConfig": {"automaticActivityDetection": {"disabled": True}},
         "inputAudioTranscription": {"mode": "SMART"},
     }}
+    frame_types = set()
+
+    async def receive_json(ws, seconds):
+        frame = await asyncio.wait_for(ws.recv(), seconds)
+        frame_types.add("binary" if isinstance(frame, bytes) else "text")
+        return json.loads(frame)
+
     async with websockets.connect(url, max_size=None) as ws:
         await ws.send(json.dumps(setup))
         while True:
-            response = json.loads(await asyncio.wait_for(ws.recv(), 20))
+            response = await receive_json(ws, 20)
             if "setupComplete" in response:
                 break
         await ws.send(json.dumps({"realtimeInput": {"activityStart": {}}}))
@@ -45,7 +52,7 @@ async def run():
             await asyncio.sleep(.25)
             while True:
                 try:
-                    earlier = json.loads(await asyncio.wait_for(ws.recv(), .01))
+                    earlier = await receive_json(ws, .01)
                 except asyncio.TimeoutError:
                     break
                 text = ((earlier.get("serverContent") or {}).get("inputTranscription") or {}).get("text", "").strip()
@@ -57,7 +64,7 @@ async def run():
         deadline = asyncio.get_running_loop().time() + 30
         while asyncio.get_running_loop().time() < deadline:
             try:
-                response = json.loads(await asyncio.wait_for(ws.recv(), 5))
+                response = await receive_json(ws, 5)
             except asyncio.TimeoutError:
                 if finalized:
                     break
@@ -73,7 +80,8 @@ async def run():
     combined = " ".join(pre_end + finalized).lower()
     if "sky is blue" not in combined:
         raise AssertionError("Finalized transcription did not contain the expected speech")
-    print(f"Gemini Live finalized expected speech; preEnd={len(pre_end)}, postEnd={len(finalized)}, turnComplete={turn_complete}")
+    print(f"Gemini Live finalized expected speech; preEnd={len(pre_end)}, postEnd={len(finalized)}, "
+          f"turnComplete={turn_complete}, frameTypes={','.join(sorted(frame_types))}")
 
 
 if __name__ == "__main__":

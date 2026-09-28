@@ -160,6 +160,9 @@ class MicrophoneService : Service() {
                         }
                     } catch (_: Exception) { /* Malformed server frames cannot become text. */ }
                 }
+                override fun onMessage(webSocket: WebSocket, bytes: okio.ByteString) {
+                    onMessage(webSocket, bytes.utf8())
+                }
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     fail("Live API connection failed${response?.code?.let { " (HTTP $it)" } ?: ""}: ${t.message ?: "network error"}")
                 }
