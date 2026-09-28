@@ -2,17 +2,18 @@ name: Android build
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
 permissions:
   contents: write
+  actions: read
 concurrency:
   group: android-build-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -27,22 +28,90 @@ jobs:
           yes | "$MANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null
           "$MANAGER" --sdk_root="$SDK_ROOT" 'platforms;android-35' 'build-tools;35.0.0'
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
-      - run: ./gradlew :app:lintDebug :app:testDebugUnitTest :app:assembleDebug --no-daemon
+      - run: ./gradlew :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: Whisproid-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
-      - name: Publish current test APK
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      - name: Sign and verify release APK with an ephemeral test key
+        id: release-apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          BUILD_TOOLS="$SDK_ROOT/build-tools/35.0.0"
+          KEYSTORE="$RUNNER_TEMP/whisproid-test-signing.jks"
+          UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+          ALIGNED_APK="$RUNNER_TEMP/app-release-aligned.apk"
+          SIGNED_APK="$RUNNER_TEMP/whisproid-release.apk"
+          STORE_PASS="$(openssl rand -hex 24)"
+          KEY_PASS="$(openssl rand -hex 24)"
+          export STORE_PASS KEY_PASS
+          trap 'unset STORE_PASS KEY_PASS' EXIT
+          keytool -genkeypair -noprompt -keystore "$KEYSTORE" -storetype JKS \
+            -alias whisproid-test -keyalg RSA -keysize 3072 -validity 3650 \
+            -dname "CN=Whisproid CI Test Signing, OU=CI, O=Whisproid, C=US" \
+            -storepass "$STORE_PASS" -keypass "$KEY_PASS" >/dev/null 2>&1
+          test -s "$UNSIGNED_APK"
+          "$BUILD_TOOLS/zipalign" -f -v 4 "$UNSIGNED_APK" "$ALIGNED_APK"
+          "$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-key-alias whisproid-test \
+            --ks-pass "env:STORE_PASS" --key-pass "env:KEY_PASS" \
+            --out "$SIGNED_APK" "$ALIGNED_APK"
+          "$BUILD_TOOLS/apksigner" verify --verbose "$SIGNED_APK"
+          PACKAGE="$("$BUILD_TOOLS/aapt" dump badging "$SIGNED_APK" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -1)"
+          test "$PACKAGE" = "dev.hermitm0nk.flowbubble"
+          ANALYZER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/apkanalyzer' -type f | sort -V | tail -1)"
+          test -x "$ANALYZER"
+          DEBUGGABLE="$("$ANALYZER" manifest debuggable "$SIGNED_APK")"
+          test "$DEBUGGABLE" = "false"
+          if "$BUILD_TOOLS/aapt" dump xmltree "$SIGNED_APK" AndroidManifest.xml | grep -q 'TestBridgeReceiver'; then
+            echo 'Release APK unexpectedly contains the debug test receiver'
+            exit 1
+          fi
+          if unzip -l "$SIGNED_APK" | grep -q 'synthetic.pcm'; then
+            echo 'Release APK unexpectedly contains the debug synthetic audio asset'
+            exit 1
+          fi
+          test -s "$SIGNED_APK"
+          echo "package=$PACKAGE" >> "$GITHUB_OUTPUT"
+          echo "apk=$SIGNED_APK" >> "$GITHUB_OUTPUT"
+          rm -f "$KEYSTORE" "$ALIGNED_APK"
+          unset STORE_PASS KEY_PASS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Whisproid-release-apk-test-signed
+          path: ${{ steps.release-apk.outputs.apk }}
+      - name: Wait for emulator and Gemini verification
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          RELEASE_TAG="$GITHUB_REF_NAME"
-          if [[ "$GITHUB_REF" == refs/heads/main ]]; then RELEASE_TAG=v0.1.2; fi
-          NOTES="Installable debug-signed APK from commit $GITHUB_SHA. CI covers Android 11/15/16 emulators, real Gemini Live synthetic-audio transcription, and an in-app synthetic AudioRecord-paced Gemini-to-external-editor test on Android 15. Physical-device microphone capture remains unverified. Builds from different runners have different signing keys; uninstall previous test builds before updating."
+          for attempt in {1..80}; do
+            runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs" -X GET -f head_sha="$GITHUB_SHA" -f per_page=100)"
+            pending=0
+            for workflow in 'Android emulator tests' 'Gemini Live integration test' 'Gemini audio end-to-end (experimental)'; do
+              result="$(jq -r --arg name "$workflow" '[.workflow_runs[] | select(.name == $name)] | sort_by(.created_at) | last | .conclusion // "pending"' <<< "$runs")"
+              case "$result" in
+                success) ;;
+                pending) pending=1 ;;
+                *) echo "Required workflow $workflow concluded $result"; exit 1 ;;
+              esac
+            done
+            if [[ "$pending" == 0 ]]; then exit 0; fi
+            sleep 30
+          done
+          echo 'Timed out waiting for required workflow checks'
+          exit 1
+      - name: Publish verified commit-specific test-signed release APK
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK_PATH: ${{ steps.release-apk.outputs.apk }}
+        run: |
+          RELEASE_TAG="v0.1.2-${GITHUB_SHA:0:7}"
+          NOTES="Installable, non-debuggable release APK from commit $GITHUB_SHA, test-signed with a newly generated ephemeral CI key. Debug-only test receiver and synthetic audio asset are not packaged. CI covers Android 11/15/16 emulators, real Gemini Live synthetic-audio transcription, and an in-app synthetic AudioRecord-paced Gemini-to-external-editor test on Android 15. Physical-device microphone capture remains unverified. Each build uses a different signing key; uninstall the previous APK before installing this build or a later build. This key is not suitable for production or update continuity."
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" app/build/outputs/apk/debug/app-debug.apk --clobber
-            gh release edit "$RELEASE_TAG" --notes "$NOTES"
+            echo "Immutable release $RELEASE_TAG already exists"
           else
-            gh release create "$RELEASE_TAG" app/build/outputs/apk/debug/app-debug.apk --target "$GITHUB_SHA" --title "Whisproid $RELEASE_TAG (test build)" --notes "$NOTES"
+            gh release create "$RELEASE_TAG" "$APK_PATH" --target "$GITHUB_SHA" --title "Whisproid $RELEASE_TAG (test-signed release build)" --notes "$NOTES"
           fi

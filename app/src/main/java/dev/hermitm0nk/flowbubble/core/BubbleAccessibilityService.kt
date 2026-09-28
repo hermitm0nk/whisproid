@@ -274,8 +274,10 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
     override fun onTranscript(text: String) {
         val generation = transcriptGeneration
         main.post {
-            if (generation != transcriptGeneration) return@post
+            // A finalized transcript belongs in local history even if the field
+            // changes or the overlay is interrupted before this callback runs.
             HistoryStore(this).use { it.add(text) }
+            if (generation != transcriptGeneration) return@post
             val node = target
             val stillFocused = focusedEditor()
             if (targetInvalidated || node == null || !node.refresh() || !node.isFocused || stillFocused != node || stillFocused.windowId != targetWindow) {
