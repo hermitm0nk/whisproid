@@ -265,6 +265,10 @@ def exercise_tap_cancel(bubble_x, bubble_y, cancel_center):
     tap(*cancel_center)
     if not wait_for_status(10, timeout=10):
         raise RuntimeError("Cancel tap did not return dictation to ready")
+    # Wait beyond the 12 s Live-result timeout before starting another
+    # identical phrase, so a late result from the canceled session cannot be
+    # mistaken for the subsequent submit or hold test.
+    time.sleep(13)
     if history_count() != baseline_history:
         raise RuntimeError("Canceled tap session unexpectedly added transcript history")
     if external_editor_text() != baseline_text:
