@@ -11,8 +11,8 @@ android {
         minSdk = 30
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
     }
     buildTypes {
         release { isMinifyEnabled = false }

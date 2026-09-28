@@ -27,13 +27,15 @@ Use JDK 17, Android SDK platform/build tools 35 and Gradle 8.13:
 
 Install `app/build/outputs/apk/debug/app-debug.apk`. The debug APK is test-signed; it is installable, but signatures generated on different machines differ, so uninstall before installing a build signed elsewhere. No API key is embedded in the APK. For a production release, configure a persistent private release signing key outside the repository.
 
-The GitHub Actions emulator matrix runs `connectedDebugAndroidTest` on API 30, 35 and 36. It checks the settings screen, encrypted key round trip, and local history persistence/deletion, and uploads UI screenshots. A separate secret-backed workflow synthesizes speech and checks an actual Gemini Live WebSocket transcription using the repository's `GOOGLE_AI_STUDIO_KEY` Actions secret. These tests do not exercise microphone capture or third-party editor insertion on a physical phone.
+GitHub Actions emulator coverage targets Android 11 (API 30), Android 15 (API 35) and Android 16 (API 36). Instrumentation tests cover app navigation, encrypted key round trip, history persistence/deletion, and capture home, settings and history screenshots. Cross-app editor insertion and screenshots have been exercised on these emulator versions. A secret-backed test verifies real Gemini Live transcription of synthetic audio and confirms that the server responds with binary WebSocket frames.
+
+A separate secret-backed Android 15 emulator pilot passed the complete app-to-Gemini-to-external-editor path. A debug-only synthetic speech asset substitutes for microphone samples while `AudioRecord` reads pace the capture loop; the app sends those frames to Gemini Live, inserts the recognized phrase into a focused editor, and stores it in History. This verifies the integration path, not physical microphone input. Physical microphone capture and behavior on physical devices have not been verified.
 
 ## Known limits
 
-- Android system overlay behavior and third-party editor support vary by device. The app has not yet been verified on physical Android 11, 15 and 16 devices.
+- Android system overlay behavior and third-party editor support vary by device. The app has not yet been verified on physical Android 11, 15 and 16 devices; physical microphone capture is unverified.
 - A dictation can run for at most 9 minutes 45 seconds, below the model's 10-minute Live session limit. A connection that fails before final text produces an error; audio is not retained for retry.
-- API and quota availability depend on the user's AI Studio project. End-to-end transcription cannot be tested without a user-provided key and microphone on a device.
+- API and quota availability depend on the user's AI Studio project. A successful CI test with the repository secret cannot guarantee that another key, quota, phone, or editor will behave identically.
 
 ## References
 

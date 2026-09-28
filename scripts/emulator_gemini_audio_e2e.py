@@ -292,6 +292,7 @@ def run():
         if diagnostic_code("TEST_HISTORY_COUNT") > 100:
             if not editor_visible_with_phrase():
                 raise RuntimeError("Transcript reached history but not the external editor")
+            save_safe_screen("whisproid-inserted-gesture.png")
             if not history_contains_phrase():
                 raise RuntimeError("Transcript was inserted but not visible in local history")
             print("PASS: synthetic speech transcribed through the app microphone path and inserted into the external editor")
