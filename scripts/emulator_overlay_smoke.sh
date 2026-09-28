@@ -39,5 +39,14 @@ python3 scripts/check_overlay_screenshots.py \
     "screenshots/focused-api-$api_level.png" \
     "screenshots/unfocused-api-$api_level.xml" \
     "screenshots/focused-api-$api_level.xml" || test_status=1
+adb shell am instrument -w -r \
+    -e class dev.hermitm0nk.flowbubble.OverlayInsertionTest \
+    dev.hermitm0nk.flowbubble.test/androidx.test.runner.AndroidJUnitRunner \
+    > "screenshots/insertion-test-api-$api_level.txt" || test_status=1
+if ! grep -q 'OK (1 test)' "screenshots/insertion-test-api-$api_level.txt"; then
+    echo 'Cross-app transcript insertion test failed'
+    cat "screenshots/insertion-test-api-$api_level.txt"
+    test_status=1
+fi
 adb logcat -d -t 500 -v brief > "screenshots/logcat-api-$api_level.txt" || true
 exit "$test_status"

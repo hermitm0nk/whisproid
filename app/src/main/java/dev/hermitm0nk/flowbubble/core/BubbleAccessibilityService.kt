@@ -28,6 +28,10 @@ import kotlin.math.abs
 
 /** Nonfocusable accessibility overlay: only a focused, ordinary editable node may show it. */
 class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Listener {
+    companion object {
+        @Volatile internal var instance: BubbleAccessibilityService? = null
+            private set
+    }
     private class BubbleButton(context: Context) : TextView(context) {
         override fun performClick(): Boolean { super.performClick(); return true }
     }
@@ -47,6 +51,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
     private val refresh = Runnable { updateVisibility() }
 
     override fun onServiceConnected() {
+        instance = this
         settings = SettingsStore(this)
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         updateVisibility()
@@ -59,6 +64,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
     override fun onInterrupt() { cancelAndHide() }
     override fun onDestroy() {
         cancelAndHide()
+        if (instance === this) instance = null
         if (MicrophoneService.instance?.listener === this) MicrophoneService.instance?.listener = null
         super.onDestroy()
     }
