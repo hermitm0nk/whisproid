@@ -125,18 +125,41 @@ class MainActivity : Activity() {
     private fun showSettings() {
         base("Settings")
         root.addView(text("Google AI Studio API key", 16, true), spaced())
+        val savedKey = settings.apiKey.trim()
+        val keyIdentifier = savedKey.takeLast(4).takeIf { savedKey.isNotEmpty() }
+        root.addView(text(
+            if (keyIdentifier != null) "Saved key: ••••$keyIdentifier (leave the field blank to keep it)" else "No API key saved",
+            13, false
+        ), spaced())
         val key = EditText(this).apply {
-            hint = "Paste API key"
+            hint = "Paste a new API key"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            setText(settings.apiKey)
+            // Keep the editor empty; the saved secret is identified separately above.
             setSingleLine(true)
             setTextColor(ink); setHintTextColor(if (settings.darkMode) 0xffaaaaaa.toInt() else 0xff777777.toInt())
             background = rounded(surface, 14)
             setPadding(dp(14), dp(12), dp(14), dp(12))
         }
         root.addView(key, spaced())
-        addButton("Save API key", true) { settings.apiKey = key.text.toString().trim(); Toast.makeText(this, "Saved on this device", Toast.LENGTH_SHORT).show() }
+        addButton("Save API key", true) {
+            val replacement = key.text.toString().trim()
+            if (replacement.isNotEmpty()) {
+                settings.apiKey = replacement
+                Toast.makeText(this, "API key saved on this device", Toast.LENGTH_SHORT).show()
+                showSettings()
+            } else {
+                Toast.makeText(this, "Enter a key to replace the saved key", Toast.LENGTH_SHORT).show()
+            }
+        }
+        if (savedKey.isNotEmpty()) addButton("Clear saved API key", false) {
+            settings.apiKey = ""
+            Toast.makeText(this, "Saved API key cleared", Toast.LENGTH_SHORT).show()
+            showSettings()
+        }
         root.addView(text("The key is used by this app to connect directly to Google's Gemini Live API. Never share screenshots or backups containing credentials.", 13, false), spaced())
+        root.addView(text("Battery and background use", 20, true), spaced())
+        root.addView(text("If Android stops dictation in the background, open App info → Battery (or App battery usage) and choose Unrestricted, if your device offers it. This is optional and may increase battery use. Whisproid does not request an exemption automatically.", 13, false), spaced())
+        addButton("Open Whisproid app settings", false) { openAppSettings() }
         root.addView(text("Floating button", 20, true), spaced())
         root.addView(text("Size: ${settings.bubbleSizeDp} dp", 14, false), spaced())
         val size = SeekBar(this).apply { max = 40; progress = (settings.bubbleSizeDp - 48).coerceIn(0, 40); setOnSeekBarChangeListener(seek { settings.bubbleSizeDp = 48 + it }) }
@@ -152,9 +175,21 @@ class MainActivity : Activity() {
             intArrayOf(accent, if (settings.darkMode) 0xffb9b2ca.toInt() else 0xff696571.toInt())
         )
         styles.forEach { (value, label) ->
-            val radio = RadioButton(this).apply { text = label; setTextColor(ink); buttonTintList = radioTint; isChecked = settings.bubbleStyle == value; setOnClickListener { settings.bubbleStyle = value } }
+            val radio = RadioButton(this).apply {
+                id = View.generateViewId()
+                tag = value
+                text = label
+                setTextColor(ink)
+                buttonTintList = radioTint
+            }
             radioGroup.addView(radio)
         }
+        radioGroup.setOnCheckedChangeListener { group, checkedId ->
+            val checked = group.findViewById<RadioButton>(checkedId)
+            (checked?.tag as? String)?.let { settings.bubbleStyle = it }
+        }
+        val selectedIndex = styles.indexOfFirst { it.first == settings.bubbleStyle }.coerceAtLeast(0)
+        radioGroup.check(radioGroup.getChildAt(selectedIndex).id)
         root.addView(radioGroup)
         addButton("View transcript history", false) { showHistory() }
     }
@@ -174,6 +209,13 @@ class MainActivity : Activity() {
             root.addView(item, spaced())
         }
         if (entries.isNotEmpty()) addButton("Delete all transcripts", false) { history.clear(); showHistory() }
+    }
+
+    private fun openAppSettings() {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = android.net.Uri.fromParts("package", packageName, null)
+        }
+        startActivity(intent)
     }
 
     private fun seek(onValue: (Int) -> Unit) = object : SeekBar.OnSeekBarChangeListener {

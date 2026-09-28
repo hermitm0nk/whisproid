@@ -58,10 +58,18 @@ class MicrophoneService : Service() {
         val notification = Notification.Builder(this, "ready").setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle("Whisproid ready").setContentText("Tap a text field to dictate")
             .setContentIntent(open).setOngoing(true).build()
-        if (Build.VERSION.SDK_INT >= 34) startForeground(17, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-        else startForeground(17, notification)
-        // Restarting a microphone FGS from background can violate Android 14+ while-in-use rules.
-        return START_NOT_STICKY
+        try {
+            if (Build.VERSION.SDK_INT >= 34) startForeground(17, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            else startForeground(17, notification)
+        } catch (_: SecurityException) {
+            // A system/OEM restart may lack while-in-use microphone access. Never
+            // crash-loop; the user can reopen the visible Activity to enable it.
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        // A system-managed sticky restart after memory pressure is allowed for an
+        // already-started FGS. This is not an attempt to launch from a boot receiver.
+        return START_STICKY
     }
     fun begin(): Boolean {
         if (session != null) return false
@@ -171,9 +179,9 @@ class MicrophoneService : Service() {
                             }
                             val content = message.optJSONObject("serverContent")
                             val transcript = content?.optJSONObject("inputTranscription")?.optString("text")?.trim().orEmpty()
-                            if (completion.addFinal(transcript)) scheduleResult(2000)
+                            if (completion.addFinal(transcript)) scheduleResult(700)
                             if (content?.optBoolean("turnComplete") == true) {
-                                if (completion.markTurnComplete()) scheduleResult(2000)
+                                if (completion.markTurnComplete()) scheduleResult(500)
                             }
                         }
                     } catch (_: Exception) { /* Malformed server frames cannot become text. */ }
@@ -215,7 +223,7 @@ class MicrophoneService : Service() {
             }
         }
         private fun capture(audio: AudioRecord, syntheticPcm: ByteArray?) {
-            val buffer = ByteArray(3200) // 100 ms of 16-bit PCM mono at 16 kHz.
+            val buffer = ByteArray(1280) // 40 ms of 16-bit PCM mono at 16 kHz.
             var syntheticOffset = 0
             try {
                 while (true) {
@@ -239,7 +247,7 @@ class MicrophoneService : Service() {
                         if (!done && !stopped) {
                             val encoded = Base64.encodeToString(buffer, 0, count, Base64.NO_WRAP)
                             if (setup) socket?.let { sendAudio(it, encoded) }
-                            else if (pending.size < 200) pending.addLast(encoded)
+                            else if (pending.size < 400) pending.addLast(encoded)
                             else fail("Live API setup too slow; recording stopped before audio could be lost")
                         }
                     }

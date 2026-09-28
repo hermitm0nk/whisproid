@@ -6,11 +6,15 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.PixelFormat
+import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.text.InputType
 import android.view.Gravity
 import android.view.MotionEvent
@@ -25,6 +29,7 @@ import dev.hermitm0nk.flowbubble.data.HistoryStore
 import dev.hermitm0nk.flowbubble.data.SettingsStore
 import dev.hermitm0nk.flowbubble.ui.MainActivity
 import kotlin.math.abs
+import kotlin.math.sin
 
 /** Nonfocusable accessibility overlay: only a focused, ordinary editable node may show it. */
 class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Listener {
@@ -33,12 +38,48 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
             private set
     }
     private class BubbleButton(context: Context) : TextView(context) {
+        enum class Visual { TEXT, WAVEFORM, RECORDING, SPINNER }
+        var visual = Visual.TEXT
+            set(value) {
+                if (field == value) return
+                field = value
+                invalidate()
+            }
+        private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            if (visual == Visual.TEXT) return
+            val unit = minOf(width, height).toFloat()
+            val centerX = width / 2f
+            val centerY = height / 2f
+            ink.color = currentTextColor
+            ink.strokeWidth = (unit * .065f).coerceAtLeast(2f)
+            if (visual == Visual.SPINNER) {
+                val radius = unit * .21f
+                val angle = (SystemClock.uptimeMillis() % 900L) * 360f / 900f
+                val oval = RectF(centerX - radius, centerY - radius, centerX + radius, centerY + radius)
+                canvas.drawArc(oval, angle, 255f, false, ink)
+            } else {
+                val heights = floatArrayOf(.15f, .38f, .26f, .5f, .26f)
+                val phase = SystemClock.uptimeMillis() / 125.0
+                for (index in heights.indices) {
+                    val x = centerX + (index - 2) * unit * .12f
+                    val scale = if (visual == Visual.RECORDING)
+                        .48f + .52f * abs(sin(phase + index * .88)).toFloat() else 1f
+                    val half = unit * heights[index] * scale / 2f
+                    canvas.drawLine(x, centerY - half, x, centerY + half, ink)
+                }
+            }
+            // Only attached active indicators request frames; removal stops animation.
+            if (isAttachedToWindow && (visual == Visual.RECORDING || visual == Visual.SPINNER)) postInvalidateOnAnimation()
+        }
         override fun performClick(): Boolean { super.performClick(); return true }
     }
     private lateinit var settings: SettingsStore
     private lateinit var wm: WindowManager
     private val main = Handler(Looper.getMainLooper())
     private var bubble: LinearLayout? = null
+    private var gestureButton: BubbleButton? = null
     private var params: WindowManager.LayoutParams? = null
     private var homeX = 0
     private var target: AccessibilityNodeInfo? = null
@@ -139,7 +180,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
             PixelFormat.TRANSLUCENT).apply {
             gravity = Gravity.TOP or Gravity.START
             this.x = x.coerceIn(0, (display.widthPixels - idleWidth).coerceAtLeast(0))
-            this.y = y.coerceIn(0, display.heightPixels - size)
+            this.y = y.coerceIn(0, (display.heightPixels - size).coerceAtLeast(0))
         }
         homeX = params!!.x
         bubble = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -148,11 +189,12 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
     }
     private fun hide() {
         main.removeCallbacks(redraw)
+        gestureButton = null
         bubble?.let { try { wm.removeView(it) } catch (_: Exception) {} }
         bubble = null; params = null
     }
     private fun cancelAndHide() { transcriptGeneration++; MicrophoneService.instance?.cancel(); target = null; hide() }
-    private fun button(symbol: String, label: String, background: Int, size: Int, radius: Float): TextView = BubbleButton(this).apply {
+    private fun button(symbol: String, label: String, background: Int, size: Int, radius: Float): BubbleButton = BubbleButton(this).apply {
         text = symbol; textSize = 23f; gravity = Gravity.CENTER
         setTextColor(if (settings.darkMode) Color.BLACK else Color.WHITE)
         contentDescription = label
@@ -165,6 +207,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
     private fun render() { main.removeCallbacks(redraw); main.post(redraw) }
     private fun renderNow() {
         val layout = bubble ?: return
+        gestureButton = null
         layout.removeAllViews()
         val color = if (settings.darkMode) 0xffaaa0b2.toInt() else 0xff4d266e.toInt()
         val size = settings.bubbleSizeDp
@@ -173,8 +216,10 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
             else -> dp(size / 2).toFloat()
         }
         if (state == "ready") {
-            val label = button("▥", "Hold to dictate, tap to start", color,
+            val label = button("", "Hold to dictate, tap to start", color,
                 if (settings.bubbleStyle == "pill") size * 2 else size, radius)
+            label.visual = BubbleButton.Visual.WAVEFORM
+            gestureButton = label
             label.alpha = settings.bubbleAlpha
             label.setOnClickListener { recordingMode = "tap"; beginRecording() }
             label.setOnTouchListener(object : View.OnTouchListener {
@@ -182,7 +227,13 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
                 private var originX = 0; private var originY = 0
                 private var moved = false; private var holding = false
                 private val hold = Runnable {
-                    if (!moved) { holding = true; holdGestureActive = true; recordingMode = "hold"; beginRecording() }
+                    if (!moved) {
+                        holding = true; holdGestureActive = true; recordingMode = "hold"; beginRecording()
+                        if (state == "recording") {
+                            label.visual = BubbleButton.Visual.RECORDING
+                            label.contentDescription = "Recording; release to transcribe"
+                        }
+                    }
                 }
                 override fun onTouch(v: View, event: MotionEvent): Boolean {
                     val p = params ?: return true
@@ -197,8 +248,8 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
                             if (moved) {
                                 val width = if (settings.bubbleStyle == "pill") size * 2 else size
                                 p.x = (originX + dx.toInt()).coerceIn(0, (resources.displayMetrics.widthPixels - dp(width)).coerceAtLeast(0))
-                                p.y = (originY + dy.toInt()).coerceIn(0, resources.displayMetrics.heightPixels - dp(size))
-                                wm.updateViewLayout(layout, p)
+                                p.y = (originY + dy.toInt()).coerceIn(0, (resources.displayMetrics.heightPixels - dp(size)).coerceAtLeast(0))
+                                try { wm.updateViewLayout(layout, p) } catch (_: Exception) {}
                             }
                         }
                         MotionEvent.ACTION_CANCEL -> {
@@ -212,7 +263,11 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
                             if (moved) { homeX = p.x; settings.bubbleX = p.x; settings.bubbleY = p.y }
                             else if (holding) {
                                 holdGestureActive = false
-                                MicrophoneService.instance?.finish()
+                                if (state == "recording") {
+                                    MicrophoneService.instance?.finish()
+                                    state = "transcribing"
+                                }
+                                label.visual = BubbleButton.Visual.SPINNER
                                 render()
                             }
                             else v.performClick()
@@ -226,11 +281,12 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
             val cancel = button("×", "Cancel dictation", color, size, dp(size / 2).toFloat())
             cancel.setOnClickListener { lastCancelCode = 4; transcriptGeneration++; MicrophoneService.instance?.cancel(); state = "ready"; render() }
             layout.addView(cancel)
-            val meter = button(if (state == "recording") "••••••" else "…", state, color,
+            val meter = button("", if (state == "recording") "Recording" else "Transcribing", color,
                 if (settings.bubbleStyle == "pill") size * 2 else size + 40, dp(size / 2).toFloat())
+            meter.visual = if (state == "recording") BubbleButton.Visual.RECORDING else BubbleButton.Visual.SPINNER
             meter.alpha = settings.bubbleAlpha
             layout.addView(meter)
-            if (recordingMode == "tap" || state == "transcribing") {
+            if (recordingMode == "tap" && state == "recording") {
                 val submit = button("✓", "Submit dictation", 0xff653783.toInt(), size, dp(size / 2).toFloat())
                 submit.setOnClickListener { if (state == "recording") MicrophoneService.instance?.finish() }
                 layout.addView(submit)
@@ -269,7 +325,13 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
         else holdGestureActive = false
     }
     override fun onState(state: String) {
-        main.post { this.state = state; if (bubble != null && !holdGestureActive) render() }
+        main.post {
+            this.state = state
+            if (holdGestureActive) {
+                gestureButton?.visual = if (state == "recording") BubbleButton.Visual.RECORDING
+                    else if (state == "transcribing") BubbleButton.Visual.SPINNER else BubbleButton.Visual.WAVEFORM
+            } else if (bubble != null) render()
+        }
     }
     override fun onTranscript(text: String) {
         val generation = transcriptGeneration

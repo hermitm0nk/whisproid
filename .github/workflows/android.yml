@@ -33,31 +33,37 @@ jobs:
         with:
           name: Whisproid-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
-      - name: Sign and verify release APK with an ephemeral test key
+      - name: Sign and verify production release APK
         id: release-apk
         shell: bash
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          STORE_PASS: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
         run: |
           set -euo pipefail
+          for name in SIGNING_KEYSTORE_BASE64 SIGNING_KEY_ALIAS STORE_PASS KEY_PASS; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing $name signing secret; production release cannot use an ephemeral key."
+              exit 1
+            fi
+          done
           SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           BUILD_TOOLS="$SDK_ROOT/build-tools/35.0.0"
-          KEYSTORE="$RUNNER_TEMP/whisproid-test-signing.jks"
+          KEYSTORE="$RUNNER_TEMP/whisproid-production-signing.jks"
           UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
           ALIGNED_APK="$RUNNER_TEMP/app-release-aligned.apk"
-          SIGNED_APK="$RUNNER_TEMP/whisproid-release.apk"
-          STORE_PASS="$(openssl rand -hex 24)"
-          KEY_PASS="$(openssl rand -hex 24)"
-          export STORE_PASS KEY_PASS
-          trap 'unset STORE_PASS KEY_PASS' EXIT
-          keytool -genkeypair -noprompt -keystore "$KEYSTORE" -storetype JKS \
-            -alias whisproid-test -keyalg RSA -keysize 3072 -validity 3650 \
-            -dname "CN=Whisproid CI Test Signing, OU=CI, O=Whisproid, C=US" \
-            -storepass "$STORE_PASS" -keypass "$KEY_PASS" >/dev/null 2>&1
+          SIGNED_APK="$RUNNER_TEMP/whisproid-v0.2.0.apk"
+          trap 'rm -f "$KEYSTORE" "$ALIGNED_APK"' EXIT
+          printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          test -s "$KEYSTORE"
           test -s "$UNSIGNED_APK"
           "$BUILD_TOOLS/zipalign" -f -v 4 "$UNSIGNED_APK" "$ALIGNED_APK"
-          "$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-key-alias whisproid-test \
+          "$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-key-alias "$SIGNING_KEY_ALIAS" \
             --ks-pass "env:STORE_PASS" --key-pass "env:KEY_PASS" \
             --out "$SIGNED_APK" "$ALIGNED_APK"
-          "$BUILD_TOOLS/apksigner" verify --verbose "$SIGNED_APK"
+          "$BUILD_TOOLS/apksigner" verify --min-sdk-version 30 --verbose --print-certs "$SIGNED_APK"
           PACKAGE="$("$BUILD_TOOLS/aapt" dump badging "$SIGNED_APK" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -1)"
           test "$PACKAGE" = "dev.hermitm0nk.flowbubble"
           ANALYZER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/apkanalyzer' -type f | sort -V | tail -1)"
@@ -75,11 +81,9 @@ jobs:
           test -s "$SIGNED_APK"
           echo "package=$PACKAGE" >> "$GITHUB_OUTPUT"
           echo "apk=$SIGNED_APK" >> "$GITHUB_OUTPUT"
-          rm -f "$KEYSTORE" "$ALIGNED_APK"
-          unset STORE_PASS KEY_PASS
       - uses: actions/upload-artifact@v4
         with:
-          name: Whisproid-release-apk-test-signed
+          name: Whisproid-production-release-apk
           path: ${{ steps.release-apk.outputs.apk }}
       - name: Wait for emulator and Gemini verification
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -102,16 +106,16 @@ jobs:
           done
           echo 'Timed out waiting for required workflow checks'
           exit 1
-      - name: Publish verified commit-specific test-signed release APK
+      - name: Publish verified production release APK
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
           APK_PATH: ${{ steps.release-apk.outputs.apk }}
         run: |
-          RELEASE_TAG="v0.1.2-${GITHUB_SHA:0:7}"
-          NOTES="Installable, non-debuggable release APK from commit $GITHUB_SHA, test-signed with a newly generated ephemeral CI key. Debug-only test receiver and synthetic audio asset are not packaged. CI covers Android 11/15/16 emulators, real Gemini Live synthetic-audio transcription, and an in-app synthetic AudioRecord-paced Gemini-to-external-editor test on Android 15. Physical-device microphone capture remains unverified. Each build uses a different signing key; uninstall the previous APK before installing this build or a later build. This key is not suitable for production or update continuity."
+          RELEASE_TAG="v0.2.0"
+          NOTES="Production-signed, non-debuggable release APK from commit $GITHUB_SHA. It uses the stable signing key configured in GitHub Actions secrets. Future updates require the same key and a higher versionCode. Earlier v0.1.x test releases had ephemeral signing keys, so they cannot be updated in place; uninstall the old build once (back up transcript history first, since uninstall erases local data). Android 11/15/16 emulator and Gemini Live CI checks must pass before this release is published."
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             echo "Immutable release $RELEASE_TAG already exists"
           else
-            gh release create "$RELEASE_TAG" "$APK_PATH" --target "$GITHUB_SHA" --title "Whisproid $RELEASE_TAG (test-signed release build)" --notes "$NOTES"
+            gh release create "$RELEASE_TAG" "$APK_PATH" --target "$GITHUB_SHA" --title "Whisproid $RELEASE_TAG" --notes "$NOTES"
           fi

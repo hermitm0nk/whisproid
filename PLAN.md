@@ -1,5 +1,16 @@
 # Plan and progress
 
+## 0.2.0 stability, visuals and update continuity
+
+- [x] User confirmed the basic microphone-to-editor workflow on a physical device; focus this iteration on the reported defects, not repeating that workflow.
+- [x] Link to app battery settings with optional Unrestricted guidance; make the foreground microphone service sticky for system-managed memory-pressure recovery, with permission-safe failure on restricted restarts. OEM stops cannot be bypassed.
+- [x] Draw an app-icon-like idle waveform, animated recording bars including hold, and a distinct animated spinner during submission/finalization.
+- [x] Fix appearance radio selection; mask the saved API key except its last four characters, with a blank replacement editor and explicit clear.
+- [x] Reduce PCM frames from 100 to 40 ms and final settling from two seconds to 0.5–0.7 seconds while keeping Gemini SMART final text. No separate parsing/editing request exists.
+- [x] Replace per-run ephemeral release signing with required persistent GitHub Actions signing secrets; bump versionCode to 4.
+- [ ] Configure the four signing secrets, build/verify the production signed APK in CI, and publish v0.2.0. Previous ephemeral test installs require one uninstall; future same-key versions can update.
+- [ ] Compile/lint/test the changes in CI and independently review the changed code; address findings.
+
 ## 0.1.2 scope
 
 - [x] Research Wispr's Android bubble, Gemini 3.5 Transcribe Live WebSocket protocol, and Android accessibility/microphone restrictions.
@@ -14,7 +25,7 @@
 - [x] Verify synthetic audio transcription through the real Gemini Live API and observe binary server WebSocket frames using the repository secret.
 - [x] Verify accessibility overlay behavior and cross-app editor insertion, with screenshots, on Android 11/15/16 emulators; apply and test the independent reviewer's production fixes.
 - [x] Pass a secret-backed in-app emulator pilot: a debug-only synthesized PCM asset is paced by AudioRecord reads, streamed by the app to Gemini, then the returned text is inserted into an external editor and stored in History. This does not validate physical microphone input.
-- [ ] Verify physical microphone capture and app behavior on physical Android 11, 15 and 16 devices.
+- [ ] Verify physical microphone capture and app behavior across physical Android 11, 15 and 16 devices (basic workflow confirmed by user on one real device).
 - [x] Configure CI to build a non-debuggable release APK, sign it with a per-run ephemeral test key, verify the signature/package/debuggable flag, and publish it in an immutable commit-specific release. The debug APK artifact and debug-only tests remain available; the release package excludes the debug test receiver and synthetic audio asset.
 
 ## Release gates
