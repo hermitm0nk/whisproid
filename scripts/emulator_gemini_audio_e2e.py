@@ -61,6 +61,14 @@ def editor_visible_with_phrase():
                for node in root.iter("node"))
 
 
+def focused_external_editor():
+    root = ui_tree()
+    return any(node.get("package") == TEST_APP
+               and node.get("class") == "android.widget.EditText"
+               and node.get("focused") == "true"
+               for node in root.iter("node"))
+
+
 def history_contains_phrase():
     adb("shell", "am", "start", "-W", "-n", f"{APP}/{APP}.ui.MainActivity")
     root = ui_tree()
@@ -109,27 +117,28 @@ def install_and_prepare_app(api_key):
     tap(save_x, save_y)
     time.sleep(0.5)
 
-    # The Settings panel is an in-activity view. Reopening the launcher intent
-    # can reuse that same screen, so restart the process to get a fresh Home.
-    adb("shell", "am", "force-stop", APP)
-    adb("shell", "am", "start", "-W", "-n", f"{APP}/{APP}.ui.MainActivity", timeout=30)
+    # Return from the in-activity Settings panel through the app's normal UI;
+    # restarting the process can leave the accessibility service detached.
+    adb("shell", "input", "keyevent", "4")
     time.sleep(0.5)
     if not any(node.get("text") == "Ready to dictate" for node in ui_tree().iter("node")):
-        raise RuntimeError("Encrypted API key was not saved before the app restart")
-    # force-stop tears down the enabled accessibility service. Toggle the
-    # global state so Android binds it again after the app is relaunched.
-    adb("shell", "settings", "put", "secure", "accessibility_enabled", "0")
-    adb("shell", "settings", "put", "secure", "enabled_accessibility_services",
-        f"{APP}/{APP}.core.BubbleAccessibilityService")
-    adb("shell", "settings", "put", "secure", "accessibility_enabled", "1")
+        raise RuntimeError("Encrypted API key was not saved or Back did not return to Home")
     # Start the microphone foreground service from this visible activity.
     tap_text("Enable dictation")
     time.sleep(1)
-    adb("shell", "am", "start", "-W", "-n",
-        f"{TEST_APP}/dev.hermitm0nk.flowbubble.HostActivity", "--ez", "focus", "true", timeout=30)
+    start_output = adb("shell", "am", "start", "-n",
+                       f"{TEST_APP}/dev.hermitm0nk.flowbubble.HostActivity",
+                       "--ez", "focus", "false", timeout=30)
     time.sleep(3)
+    try:
+        tap_text("Write a message")
+        time.sleep(1)
+        if not focused_external_editor():
+            raise RuntimeError("HostActivity does not expose a focused external EditText")
+    except RuntimeError as error:
+        raise RuntimeError(f"{error}; safe HostActivity start stdout: {start_output.strip()!r}") from None
     if diagnostic_code("TEST_STATUS") == 2:
-        raise RuntimeError("Accessibility service did not rebind after app restart")
+        raise RuntimeError("Accessibility service is unavailable after HostActivity launch")
 
 
 def display_size_and_density():
@@ -185,6 +194,8 @@ def run():
     pcm_duration_ms = os.path.getsize("app/src/debug/assets/synthetic.pcm") // 32
     hold_duration_ms = max(4000, pcm_duration_ms + 1800)
     before = diagnostic_code("TEST_STATUS")
+    if not focused_external_editor():
+        raise RuntimeError("Refusing gesture: external EditText is not focused")
     save_safe_screen("whisproid-before-gesture.png")
     if before in (2, 3):
         raise RuntimeError(f"Dictation prerequisites unavailable (status {before})")
