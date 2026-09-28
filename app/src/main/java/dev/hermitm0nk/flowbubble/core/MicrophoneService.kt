@@ -277,7 +277,9 @@ class MicrophoneService : Service() {
                 fail("Live API could not send the end of speech")
                 return
             }
-            scheduleResult(12_000)
+            // SMART may have finalized all speech before the button is released.
+            // In that case no additional server event is guaranteed after end.
+            scheduleResult(if (completion.canCommitAfterSettling()) 700 else 12_000)
         }
         fun finish() {
             synchronized(lock) {
