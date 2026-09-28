@@ -241,7 +241,8 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
         }
     }
     private fun insert(node: AccessibilityNodeInfo, words: String): Boolean {
-        val current = node.text?.toString().orEmpty()
+        // AccessibilityNodeInfo.text may expose an empty editor's hint as text.
+        val current = if (node.isShowingHintText) "" else node.text?.toString().orEmpty()
         val from = node.textSelectionStart.takeIf { it >= 0 } ?: current.length
         val to = node.textSelectionEnd.takeIf { it >= 0 } ?: from
         val insertion = composeInsertion(current, from, to, words)

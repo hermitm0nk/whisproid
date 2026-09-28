@@ -50,8 +50,21 @@ adb shell am broadcast -a dev.hermitm0nk.flowbubble.TEST_HISTORY \
     -n dev.hermitm0nk.flowbubble/dev.hermitm0nk.flowbubble.core.TestBridgeReceiver \
     > "screenshots/history-test-api-$api_level.txt" || test_status=1
 if ! grep -q 'result=1' "screenshots/insertion-test-api-$api_level.txt" || \
-    ! grep -q 'Inserted from accessibility test' "screenshots/inserted-api-$api_level.xml" || \
-    ! grep -q 'result=1' "screenshots/history-test-api-$api_level.txt"; then
+    ! python3 - "screenshots/inserted-api-$api_level.xml" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(sys.argv[1]).getroot()
+editors = [node for node in root.iter("node") if node.get("class") == "android.widget.EditText"
+           and node.get("package") == "dev.hermitm0nk.flowbubble.test"]
+assert len(editors) == 1, f"Expected one external editor; found {len(editors)}"
+assert editors[0].get("text") == "Inserted from accessibility test", editors[0].get("text")
+PY
+then
+    echo 'Cross-app editor text was not exactly the transcript'
+    test_status=1
+fi
+if ! grep -q 'result=1' "screenshots/history-test-api-$api_level.txt"; then
     echo 'Cross-app transcript insertion and history check failed'
     cat "screenshots/insertion-test-api-$api_level.txt" "screenshots/history-test-api-$api_level.txt"
     test_status=1
