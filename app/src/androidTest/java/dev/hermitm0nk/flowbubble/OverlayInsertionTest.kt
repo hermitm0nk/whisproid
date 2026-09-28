@@ -1,6 +1,8 @@
 package dev.hermitm0nk.flowbubble
 
 import android.content.Intent
+import android.app.UiAutomation
+import android.provider.Settings
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -17,23 +19,29 @@ class OverlayInsertionTest {
     @Test fun transcriptInsertsIntoFocusedExternalEditorAndSavesHistory() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
+        // The standard connected test pass intentionally runs without accessibility.
+        val enabled = Settings.Secure.getString(context.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
+        assumeTrue("Accessibility service is not enabled by this test run",
+            enabled.contains("dev.hermitm0nk.flowbubble.core.BubbleAccessibilityService"))
+        // Instrumentation normally suppresses other accessibility services.
+        val automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
         var service = BubbleAccessibilityService.instance
-        // The regular instrumentation pass runs before accessibility is enabled.
-        assumeTrue("Accessibility service is not enabled", service != null)
         context.startActivity(Intent().setClassName(
             "dev.hermitm0nk.flowbubble.test", "dev.hermitm0nk.flowbubble.HostActivity"
         ).putExtra("focus", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         val deadline = System.currentTimeMillis() + 10_000
         while (System.currentTimeMillis() < deadline) {
             service = BubbleAccessibilityService.instance
-            val focused = instrumentation.uiAutomation.windows.any { window ->
+            val focused = automation.windows.any { window ->
                 val node = window.root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
                 node?.packageName?.toString() == "dev.hermitm0nk.flowbubble.test" && node.isEditable
             }
             if (service != null && focused) break
             Thread.sleep(200)
         }
-        assertTrue("Test editor never gained focus", instrumentation.uiAutomation.windows.any { window ->
+        assertTrue("Accessibility service did not bind", service != null)
+        assertTrue("Test editor never gained focus", automation.windows.any { window ->
             window.root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.packageName?.toString() ==
                 "dev.hermitm0nk.flowbubble.test"
         })
@@ -44,7 +52,7 @@ class OverlayInsertionTest {
         var inserted = false
         val insertDeadline = System.currentTimeMillis() + 5_000
         while (System.currentTimeMillis() < insertDeadline) {
-            inserted = instrumentation.uiAutomation.windows.any { window ->
+            inserted = automation.windows.any { window ->
                 val editor = window.root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
                 editor?.packageName?.toString() == "dev.hermitm0nk.flowbubble.test" &&
                     editor.text?.toString()?.contains(phrase) == true

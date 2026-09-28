@@ -43,7 +43,8 @@ adb shell am instrument -w -r \
     -e class dev.hermitm0nk.flowbubble.OverlayInsertionTest \
     dev.hermitm0nk.flowbubble.test/androidx.test.runner.AndroidJUnitRunner \
     > "screenshots/insertion-test-api-$api_level.txt" || test_status=1
-if ! grep -q 'OK (1 test)' "screenshots/insertion-test-api-$api_level.txt"; then
+if ! grep -q 'OK (1 test)' "screenshots/insertion-test-api-$api_level.txt" || \
+    grep -qE 'AssumptionViolated|INSTRUMENTATION_STATUS_CODE: -4|SKIPPED' "screenshots/insertion-test-api-$api_level.txt"; then
     echo 'Cross-app transcript insertion test failed'
     cat "screenshots/insertion-test-api-$api_level.txt"
     test_status=1
