@@ -49,6 +49,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
     private var recordingMode = "tap"
     private var holdGestureActive = false
     private var lastError: String? = null
+    private val redraw = Runnable { renderNow() }
     internal fun diagnosticCode(): Int {
         val error = lastError
         if (error != null) return when {
@@ -129,10 +130,11 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
         }
         homeX = params!!.x
         bubble = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        render()
+        renderNow()
         try { wm.addView(bubble, params) } catch (_: Exception) { bubble = null; params = null }
     }
     private fun hide() {
+        main.removeCallbacks(redraw)
         bubble?.let { try { wm.removeView(it) } catch (_: Exception) {} }
         bubble = null; params = null
     }
@@ -145,7 +147,10 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
         this.background = GradientDrawable().apply { setColor(background); cornerRadius = radius }
         layoutParams = LinearLayout.LayoutParams(dp(size), dp(settings.bubbleSizeDp)).apply { marginEnd = dp(5) }
     }
-    private fun render() {
+    // Do not tear down children from inside a child's touch dispatch; Android's
+    // hardware renderer can still be traversing the previous child array.
+    private fun render() { main.removeCallbacks(redraw); main.post(redraw) }
+    private fun renderNow() {
         val layout = bubble ?: return
         layout.removeAllViews()
         val color = if (settings.darkMode) 0xffaaa0b2.toInt() else 0xff4d266e.toInt()
