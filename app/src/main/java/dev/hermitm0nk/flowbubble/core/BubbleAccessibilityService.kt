@@ -88,6 +88,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
     private var transcriptGeneration = 0
     private var state = "ready"
     private var recordingMode = "tap"
+    private var finishing = false
     private var holdGestureActive = false
     private var lastError: String? = null
     internal var lastCancelCode = 0
@@ -152,7 +153,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
     private fun updateVisibility() {
         val focused = focusedEditor()
         if (focused == null) {
-            if (state == "recording") { lastCancelCode = 1; MicrophoneService.instance?.cancel() }
+            if (state == "recording") { lastCancelCode = 1; finishing = false; MicrophoneService.instance?.cancel() }
             if (state == "transcribing") targetInvalidated = true
             target = if (state == "transcribing") target else null
             hide(); return
@@ -161,7 +162,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
             val original = target
             if (original == null || original != focused || !original.refresh() || !original.isFocused) {
                 targetInvalidated = true
-                if (state == "recording") { lastCancelCode = 2; MicrophoneService.instance?.cancel(); state = "ready" }
+                if (state == "recording") { lastCancelCode = 2; finishing = false; MicrophoneService.instance?.cancel(); state = "ready" }
             }
         }
         if (state == "ready" || target == null) { target = focused; targetWindow = focused.windowId }
@@ -193,7 +194,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
         bubble?.let { try { wm.removeView(it) } catch (_: Exception) {} }
         bubble = null; params = null
     }
-    private fun cancelAndHide() { transcriptGeneration++; MicrophoneService.instance?.cancel(); target = null; hide() }
+    private fun cancelAndHide() { transcriptGeneration++; finishing = false; MicrophoneService.instance?.cancel(); target = null; hide() }
     private fun button(symbol: String, label: String, background: Int, size: Int, radius: Float): BubbleButton = BubbleButton(this).apply {
         text = symbol; textSize = 23f; gravity = Gravity.CENTER
         setTextColor(if (settings.darkMode) Color.BLACK else Color.WHITE)
@@ -255,7 +256,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
                         MotionEvent.ACTION_CANCEL -> {
                             main.removeCallbacks(hold)
                             holdGestureActive = false
-                            if (holding) { lastCancelCode = 3; transcriptGeneration++; MicrophoneService.instance?.cancel() }
+                            if (holding) { lastCancelCode = 3; transcriptGeneration++; finishing = false; MicrophoneService.instance?.cancel() }
                             state = "ready"; render()
                         }
                         MotionEvent.ACTION_UP -> {
@@ -264,6 +265,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
                             else if (holding) {
                                 holdGestureActive = false
                                 if (state == "recording") {
+                                    finishing = true
                                     MicrophoneService.instance?.finish()
                                     state = "transcribing"
                                 }
@@ -280,18 +282,18 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
         } else {
             val cancel = button("×", "Cancel dictation", color, size, radius)
             cancel.alpha = settings.bubbleAlpha
-            cancel.setOnClickListener { lastCancelCode = 4; transcriptGeneration++; MicrophoneService.instance?.cancel(); state = "ready"; render() }
+            cancel.setOnClickListener { lastCancelCode = 4; transcriptGeneration++; finishing = false; MicrophoneService.instance?.cancel(); state = "ready"; render() }
             layout.addView(cancel)
             val preferredMeterWidth = if (settings.bubbleStyle == "pill") size * 2 else size + 40
             // Preserve both action buttons on compact Android 11+ displays.
             val availableMeterWidth = ((resources.displayMetrics.widthPixels - dp(size * 2 + 15)) /
                 resources.displayMetrics.density).toInt().coerceAtLeast(44)
-            val meter = button("", if (state == "recording") "Recording" else "Transcribing", color,
+            val meter = button("", if (state == "recording" && !finishing) "Recording" else "Transcribing", color,
                 minOf(preferredMeterWidth, availableMeterWidth), radius)
-            meter.visual = if (state == "recording") BubbleButton.Visual.RECORDING else BubbleButton.Visual.SPINNER
+            meter.visual = if (state == "recording" && !finishing) BubbleButton.Visual.RECORDING else BubbleButton.Visual.SPINNER
             meter.alpha = settings.bubbleAlpha
             layout.addView(meter)
-            if (recordingMode == "tap" && state == "recording") {
+            if (recordingMode == "tap" && state == "recording" && !finishing) {
                 val submit = button("✓", "Submit dictation", 0xff653783.toInt(), size, radius)
                 submit.alpha = settings.bubbleAlpha
                 submit.setOnClickListener {
@@ -300,6 +302,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
                         // service callback can leave the old meter visible for
                         // several frames when Gemini finalizes very quickly.
                         state = "transcribing"
+                        finishing = true
                         meter.visual = BubbleButton.Visual.SPINNER
                         meter.contentDescription = "Transcribing"
                         render()
@@ -337,16 +340,18 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
         mic.listener = this
         lastError = null
         lastCancelCode = 0
+        finishing = false
         targetInvalidated = false
         if (mic.begin()) { state = "recording"; if (!holdGestureActive) render() }
         else holdGestureActive = false
     }
     override fun onState(state: String) {
         main.post {
+            if (state == "transcribing") finishing = true
             this.state = state
             if (holdGestureActive) {
-                gestureButton?.visual = if (state == "recording") BubbleButton.Visual.RECORDING
-                    else if (state == "transcribing") BubbleButton.Visual.SPINNER else BubbleButton.Visual.WAVEFORM
+                gestureButton?.visual = if (finishing || state == "transcribing") BubbleButton.Visual.SPINNER
+                    else if (state == "recording") BubbleButton.Visual.RECORDING else BubbleButton.Visual.WAVEFORM
             } else if (bubble != null) render()
         }
     }
@@ -365,6 +370,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
                 notifyUser("Transcript saved in history; open it to copy")
             }
             state = "ready"; updateVisibility(); render()
+            finishing = false
         }
     }
     private fun insert(node: AccessibilityNodeInfo, words: String): Boolean {
@@ -385,7 +391,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
         clipboard.setPrimaryClip(ClipData.newPlainText("Whisproid transcription", words))
         return node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
     }
-    override fun onFailure(message: String) { main.post { lastError = message; state = "ready"; render(); notifyUser(message) } }
+    override fun onFailure(message: String) { main.post { lastError = message; finishing = false; state = "ready"; render(); notifyUser(message) } }
     private fun notifyUser(message: String) { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 }

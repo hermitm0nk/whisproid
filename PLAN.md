@@ -1,20 +1,21 @@
 # Plan and progress
 
-## 0.2.1 stability, visuals and update continuity
+## 0.2.2 stability, visuals and update continuity
 
 - [x] User confirmed the basic microphone-to-editor workflow on a physical device; focus this iteration on the reported defects, not repeating that workflow.
 - [x] Link to app battery settings with optional Unrestricted guidance; make the foreground microphone service sticky for system-managed memory-pressure recovery, with permission-safe failure on restricted restarts. OEM stops cannot be bypassed.
 - [x] Draw an app-icon-like idle waveform, animated recording bars including hold, and a distinct animated spinner during submission/finalization.
 - [x] Fix appearance radio selection; mask the saved API key except its last four characters, with a blank replacement editor and explicit clear.
 - [x] Reduce PCM frames from 100 to 40 ms; keep a conservative two-second settling window for trailing SMART final segments, but complete faster (0.5 seconds) on an authoritative turn-complete event. No separate parsing/editing request exists.
-- [x] Replace per-run ephemeral release signing with persistent GitHub Actions secrets. v0.2.0 (versionCode 4) is the first stable-signed production release; v0.2.1 increments to 5 using the same pinned certificate.
-- [x] Configure the four signing secrets and publish v0.2.0. Previous ephemeral test installs require one uninstall; v0.2.1 updates v0.2.0 in place.
+- [x] Replace per-run ephemeral release signing with persistent GitHub Actions secrets. v0.2.0 (versionCode 4) is the first stable-signed production release; v0.2.1 (code 5) and v0.2.2 (code 6) use the same pinned certificate.
+- [x] Configure the four signing secrets and publish v0.2.0/v0.2.1. Previous ephemeral test installs require one uninstall; v0.2.2 updates either stable build in place.
 - [x] Independent v0.2.0 review completed; fixed fork-PR signing-secrets failure and the 12-second delay for a final segment emitted before button release.
 - [x] Add CI screenshot capture of recording, hold, and transcribing overlay states without reading the accessibility hierarchy mid-session.
 - [x] Secret-backed app-to-Gemini-to-editor tap/cancel, tap/submit, and hold/release test passed after pacing the synthetic phrase; Android 11/15/16 emulator matrix and Live API integration passed on `acdac61`. Recording and held-state screenshots show the waveform.
 - [x] Latest CI passed all emulator and secret-backed Gemini tests. The screenshot immediately after Submit caught the old waveform for one frame, so switch the visible meter to spinner synchronously on Submit before the service callback.
 - [x] Independently reviewed current release code again; corrected shape/opacity consistency and compact-screen recording controls, pinned the first production certificate SHA-256, and made existing-tag checks fail on mismatched commit or missing APK.
-- [ ] Verify the spinner screenshot and publish the final review fixes as signed v0.2.1 after CI checks.
+- [x] Publish the independent review fixes as signed v0.2.1 after all CI checks passed.
+- [ ] Verify the transcribing spinner across a delayed recording callback with immediate and settled screenshots, then publish signed v0.2.2 after CI checks.
 
 ## 0.1.2 scope
 

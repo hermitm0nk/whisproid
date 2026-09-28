@@ -293,6 +293,8 @@ def exercise_tap_submit(bubble_x, bubble_y, submit_center, pcm_duration_ms):
     # Capture immediately: Gemini can close an already-finalized turn faster
     # than a diagnostic broadcast round trip.
     capture_external_editor_screen("whisproid-transcribing-gesture.png")
+    time.sleep(0.15)
+    capture_external_editor_screen("whisproid-transcribing-settled-gesture.png")
     deadline = time.monotonic() + 35
     while time.monotonic() < deadline:
         if history_count() > baseline_history:
