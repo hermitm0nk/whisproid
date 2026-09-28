@@ -64,7 +64,12 @@ jobs:
           "$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-key-alias "$SIGNING_KEY_ALIAS" \
             --ks-pass "env:STORE_PASS" --key-pass "env:KEY_PASS" \
             --out "$SIGNED_APK" "$ALIGNED_APK"
-          "$BUILD_TOOLS/apksigner" verify --min-sdk-version 30 --verbose --print-certs "$SIGNED_APK"
+          VERIFY_OUTPUT="$("$BUILD_TOOLS/apksigner" verify --min-sdk-version 30 --verbose --print-certs "$SIGNED_APK")"
+          printf '%s\n' "$VERIFY_OUTPUT"
+          CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<< "$VERIFY_OUTPUT" | head -1)"
+          # Pin the first production signing identity. A newly supplied but
+          # otherwise valid keystore must not silently break APK updates.
+          test "${CERT_SHA256,,}" = "74b6afb68d2d58ab2d59a5fb07dba318158fd17c577b0465933d5895033b7858"
           PACKAGE="$("$BUILD_TOOLS/aapt" dump badging "$SIGNED_APK" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -1)"
           test "$PACKAGE" = "dev.hermitm0nk.flowbubble"
           ANALYZER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/apkanalyzer' -type f | sort -V | tail -1)"
@@ -117,7 +122,14 @@ jobs:
           RELEASE_TAG="v0.2.0"
           NOTES="Production-signed, non-debuggable release APK from commit $GITHUB_SHA. It uses the stable signing key configured in GitHub Actions secrets. Future updates require the same key and a higher versionCode. Earlier v0.1.x test releases had ephemeral signing keys, so they cannot be updated in place; uninstall the old build once (back up transcript history first, since uninstall erases local data). Android 11/15/16 emulator and Gemini Live CI checks must pass before this release is published."
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Immutable release $RELEASE_TAG already exists"
+            existing="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+            target="$(jq -r '.target_commitish' <<< "$existing")"
+            asset="$(jq -r --arg name "$(basename "$APK_PATH")" '[.assets[].name == $name] | any' <<< "$existing")"
+            if [[ "$target" != "$GITHUB_SHA" || "$asset" != true ]]; then
+              echo "Release $RELEASE_TAG already exists for a different commit or without the verified APK; bump versionCode/versionName and release tag."
+              exit 1
+            fi
+            echo "Verified release $RELEASE_TAG already exists for this commit and APK"
           else
             gh release create "$RELEASE_TAG" "$APK_PATH" --target "$GITHUB_SHA" --title "Whisproid $RELEASE_TAG" --notes "$NOTES"
           fi

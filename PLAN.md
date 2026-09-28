@@ -13,6 +13,7 @@
 - [x] Add CI screenshot capture of recording, hold, and transcribing overlay states without reading the accessibility hierarchy mid-session.
 - [x] Secret-backed app-to-Gemini-to-editor tap/cancel, tap/submit, and hold/release test passed after pacing the synthetic phrase; Android 11/15/16 emulator matrix and Live API integration passed on `acdac61`. Recording and held-state screenshots show the waveform.
 - [x] Latest CI passed all emulator and secret-backed Gemini tests. The screenshot immediately after Submit caught the old waveform for one frame, so switch the visible meter to spinner synchronously on Submit before the service callback.
+- [x] Independently reviewed current release code again; corrected shape/opacity consistency and compact-screen recording controls, pinned the first production certificate SHA-256, and made existing-tag checks fail on mismatched commit or missing APK.
 - [ ] Verify the spinner screenshot and stable-signed production release. Signing secrets were configured by the repository owner after the earlier missing-secret runs.
 
 ## 0.1.2 scope

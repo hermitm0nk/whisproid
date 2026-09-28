@@ -278,16 +278,22 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
             })
             layout.addView(label)
         } else {
-            val cancel = button("×", "Cancel dictation", color, size, dp(size / 2).toFloat())
+            val cancel = button("×", "Cancel dictation", color, size, radius)
+            cancel.alpha = settings.bubbleAlpha
             cancel.setOnClickListener { lastCancelCode = 4; transcriptGeneration++; MicrophoneService.instance?.cancel(); state = "ready"; render() }
             layout.addView(cancel)
+            val preferredMeterWidth = if (settings.bubbleStyle == "pill") size * 2 else size + 40
+            // Preserve both action buttons on compact Android 11+ displays.
+            val availableMeterWidth = ((resources.displayMetrics.widthPixels - dp(size * 2 + 15)) /
+                resources.displayMetrics.density).toInt().coerceAtLeast(44)
             val meter = button("", if (state == "recording") "Recording" else "Transcribing", color,
-                if (settings.bubbleStyle == "pill") size * 2 else size + 40, dp(size / 2).toFloat())
+                minOf(preferredMeterWidth, availableMeterWidth), radius)
             meter.visual = if (state == "recording") BubbleButton.Visual.RECORDING else BubbleButton.Visual.SPINNER
             meter.alpha = settings.bubbleAlpha
             layout.addView(meter)
             if (recordingMode == "tap" && state == "recording") {
-                val submit = button("✓", "Submit dictation", 0xff653783.toInt(), size, dp(size / 2).toFloat())
+                val submit = button("✓", "Submit dictation", 0xff653783.toInt(), size, radius)
+                submit.alpha = settings.bubbleAlpha
                 submit.setOnClickListener {
                     if (state == "recording") {
                         // Show progress at the gesture itself. Waiting for the
