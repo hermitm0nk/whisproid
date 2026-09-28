@@ -290,8 +290,9 @@ def exercise_tap_submit(bubble_x, bubble_y, submit_center, pcm_duration_ms):
         raise RuntimeError("Recording did not remain active for the synthetic phrase")
     capture_external_editor_screen("whisproid-recording-gesture.png")
     tap(*submit_center)
-    if diagnostic_code("TEST_STATUS") == 12:
-        capture_external_editor_screen("whisproid-transcribing-gesture.png")
+    # Capture immediately: Gemini can close an already-finalized turn faster
+    # than a diagnostic broadcast round trip.
+    capture_external_editor_screen("whisproid-transcribing-gesture.png")
     deadline = time.monotonic() + 35
     while time.monotonic() < deadline:
         if history_count() > baseline_history:
