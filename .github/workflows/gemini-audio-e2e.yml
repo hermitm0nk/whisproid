@@ -6,7 +6,6 @@ on:
       - '.github/workflows/gemini-audio-e2e.yml'
       - 'scripts/emulator_audio_e2e.sh'
       - 'scripts/emulator_gemini_audio_e2e.py'
-      - 'scripts/proto/emulator_controller.proto'
   workflow_dispatch:
 permissions:
   contents: read
@@ -14,8 +13,6 @@ jobs:
   audio-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      GOOGLE_AI_STUDIO_KEY: ${{ secrets.GOOGLE_AI_STUDIO_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -25,23 +22,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install speech and gRPC tools
+      - name: Install speech synthesis tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq espeak-ng ffmpeg pulseaudio pulseaudio-utils
-          python -m pip install grpcio grpcio-tools
-      - name: Start headless audio backend
-        run: |
-          pulseaudio --start --exit-idle-time=-1
-          pactl load-module module-null-sink sink_name=whisproid_test_sink
-          pactl load-module module-remap-source master=whisproid_test_sink.monitor source_name=whisproid_test_mic
-          pactl set-default-sink whisproid_test_sink
-          pactl set-default-source whisproid_test_mic
+          sudo apt-get install -y -qq espeak-ng ffmpeg
       - name: Create deterministic synthetic speech
         run: |
+          mkdir -p app/src/debug/assets
           espeak-ng -s 135 -w "$RUNNER_TEMP/whisproid-e2e-source.wav" 'Today is Monday and the sky is blue.'
           ffmpeg -hide_banner -loglevel error -y -i "$RUNNER_TEMP/whisproid-e2e-source.wav" \
-            -ar 16000 -ac 1 -c:a pcm_s16le "$RUNNER_TEMP/whisproid-e2e.wav"
+            -f s16le -ar 16000 -ac 1 app/src/debug/assets/synthetic.pcm
       - name: Build debug app and test host
         run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
       - name: Enable KVM
@@ -50,10 +40,12 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
+        env:
+          GOOGLE_AI_STUDIO_KEY: ${{ secrets.GOOGLE_AI_STUDIO_KEY }}
         with:
           api-level: 35
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -no-snapshot -grpc localhost:8554
+          emulator-options: -no-window -gpu swiftshader_indirect -no-boot-anim -no-snapshot
           script: bash scripts/emulator_audio_e2e.sh

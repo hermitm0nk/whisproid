@@ -1,22 +1,16 @@
-"""Experimental full app audio path test on a gRPC-enabled Android emulator."""
+"""Full app audio path test using a debug-only synthetic PCM asset."""
 import os
 import re
 import subprocess
 import sys
 import time
-import wave
 import xml.etree.ElementTree as ET
-from pathlib import Path
-
-import grpc
-import emulator_controller_pb2 as emulator_pb
-import emulator_controller_pb2_grpc as emulator_grpc
-
 
 APP = "dev.hermitm0nk.flowbubble"
 TEST_APP = f"{APP}.test"
 PHRASE = "today is monday and the sky is blue"
-GRPC_TARGET = "127.0.0.1:8554"
+TEST_AUDIO_ACTION = f"{APP}.TEST_AUDIO"
+TEST_BRIDGE = f"{APP}/{APP}.core.TestBridgeReceiver"
 
 
 def adb(*args, timeout=30):
@@ -142,62 +136,33 @@ def display_size_and_density():
     return width, height, density
 
 
-def inject_wav(path):
-    def packets():
-        with wave.open(str(path), "rb") as source:
-            if (source.getnchannels(), source.getsampwidth(), source.getframerate()) != (1, 2, 16000):
-                raise RuntimeError("Synthetic test WAV must be mono, signed 16-bit, 16 kHz")
-            audio_format = emulator_pb.AudioFormat(
-                samplingRate=16000,
-                channels=emulator_pb.AudioFormat.Mono,
-                format=emulator_pb.AudioFormat.AUD_FMT_S16,
-                mode=emulator_pb.AudioFormat.MODE_UNSPECIFIED,
-            )
-            frames_per_packet = 4800  # 300 ms; emulator gRPC input is back-pressured.
-            while True:
-                audio = source.readframes(frames_per_packet)
-                if not audio:
-                    break
-                yield emulator_pb.AudioPacket(format=audio_format, audio=audio)
-
-    with grpc.insecure_channel(GRPC_TARGET) as channel:
-        grpc.channel_ready_future(channel).result(timeout=15)
-        stub = emulator_grpc.EmulatorControllerStub(channel)
-        stub.injectAudio(packets(), timeout=30)
+def stage_synthetic_audio():
+    output = adb("shell", "am", "broadcast", "-a", TEST_AUDIO_ACTION,
+                 "-n", TEST_BRIDGE, "-p", APP, timeout=20)
+    if "Broadcast completed: result=1" not in output:
+        raise RuntimeError("Debug synthetic audio harness did not report successful asset staging")
 
 
-def run(wav_path):
+def run():
     api_key = os.environ.get("GOOGLE_AI_STUDIO_KEY", "")
     if not api_key:
         raise RuntimeError("GOOGLE_AI_STUDIO_KEY is not configured")
-    if not wav_path.is_file():
-        raise RuntimeError("Synthetic test WAV does not exist")
     install_and_prepare_app(api_key)
+    stage_synthetic_audio()
 
     width, height, density = display_size_and_density()
     bubble_size = int(58 * density)
     edge_margin = int(22 * density)
     bubble_x = width - edge_margin - bubble_size // 2
     bubble_y = int(105 * density) + bubble_size // 2
+    pcm_duration_ms = os.path.getsize("app/src/debug/assets/synthetic.pcm") // 32
+    hold_duration_ms = max(4000, pcm_duration_ms + 1800)
 
-    # Hold past the app's 330 ms long-press threshold. Start injecting only after
-    # AudioRecord has had time to open; release is the app's speech activityEnd.
-    hold = subprocess.Popen(
-        ["adb", "shell", "input", "swipe", str(bubble_x), str(bubble_y),
-         str(bubble_x), str(bubble_y), "10000"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    try:
-        time.sleep(1.0)
-        inject_wav(wav_path)
-        time.sleep(3.0)
-    finally:
-        try:
-            hold.wait(timeout=12)
-        except subprocess.TimeoutExpired:
-            hold.kill()
-            raise RuntimeError("Emulator hold gesture did not finish")
+    # The debug receiver arms the in-app substitution harness; this remains a
+    # real accessibility-service hold/release gesture through AudioRecord.
+    adb("shell", "input", "swipe", str(bubble_x), str(bubble_y),
+        str(bubble_x), str(bubble_y), str(hold_duration_ms),
+        timeout=hold_duration_ms / 1000 + 10)
 
     deadline = time.monotonic() + 35
     while time.monotonic() < deadline:
@@ -211,6 +176,6 @@ def run(wav_path):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        raise SystemExit("Usage: emulator_gemini_audio_e2e.py <synthetic-wav>")
-    run(Path(sys.argv[1]))
+    if len(sys.argv) != 1:
+        raise SystemExit("Usage: emulator_gemini_audio_e2e.py")
+    run()

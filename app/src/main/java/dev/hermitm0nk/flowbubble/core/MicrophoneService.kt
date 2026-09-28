@@ -35,6 +35,8 @@ class MicrophoneService : Service() {
         const val ACTION_STOP = "dev.hermitm0nk.flowbubble.STOP"
         @Volatile var instance: MicrophoneService? = null
             private set
+        // Only populated by the DUMP-protected receiver present in debug builds.
+        @Volatile internal var syntheticPcmForNextSession: ByteArray? = null
     }
     interface Listener {
         fun onState(state: String)
@@ -190,7 +192,9 @@ class MicrophoneService : Service() {
                 if (synchronized(lock) { done }) {
                     audio.release(); recorder = null; return
                 }
-                Thread({ capture(audio) }, "flowbubble-capture").start()
+                val syntheticPcm = syntheticPcmForNextSession
+                syntheticPcmForNextSession = null
+                Thread({ capture(audio, syntheticPcm) }, "flowbubble-capture").start()
                 captureStarted = true
                 synchronized(lock) {
                     if (!done) {
@@ -203,8 +207,9 @@ class MicrophoneService : Service() {
                 fail("Could not start microphone: ${e.message}")
             }
         }
-        private fun capture(audio: AudioRecord) {
+        private fun capture(audio: AudioRecord, syntheticPcm: ByteArray?) {
             val buffer = ByteArray(3200) // 100 ms of 16-bit PCM mono at 16 kHz.
+            var syntheticOffset = 0
             try {
                 while (true) {
                     val shouldStop = synchronized(lock) { stopped || done }
@@ -214,6 +219,14 @@ class MicrophoneService : Service() {
                         val expectedStop = synchronized(lock) { stopped || done }
                         if (!expectedStop) fail("Microphone read failed ($count)")
                         break
+                    }
+                    if (count > 0 && syntheticPcm != null) {
+                        val bytes = minOf(count, syntheticPcm.size - syntheticOffset)
+                        if (bytes > 0) {
+                            syntheticPcm.copyInto(buffer, 0, syntheticOffset, syntheticOffset + bytes)
+                            syntheticOffset += bytes
+                        }
+                        if (bytes < count) buffer.fill(0, bytes, count)
                     }
                     if (count > 0) synchronized(lock) {
                         if (!done && !stopped) {
