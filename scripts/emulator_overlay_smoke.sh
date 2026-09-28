@@ -39,14 +39,21 @@ python3 scripts/check_overlay_screenshots.py \
     "screenshots/focused-api-$api_level.png" \
     "screenshots/unfocused-api-$api_level.xml" \
     "screenshots/focused-api-$api_level.xml" || test_status=1
-adb shell am instrument -w -r \
-    -e class dev.hermitm0nk.flowbubble.OverlayInsertionTest \
-    dev.hermitm0nk.flowbubble.test/androidx.test.runner.AndroidJUnitRunner \
+adb shell am broadcast -a dev.hermitm0nk.flowbubble.TEST_INSERT \
+    -n dev.hermitm0nk.flowbubble/dev.hermitm0nk.flowbubble.core.TestBridgeReceiver \
     > "screenshots/insertion-test-api-$api_level.txt" || test_status=1
-if ! grep -q 'OK (1 test)' "screenshots/insertion-test-api-$api_level.txt" || \
-    grep -qE 'AssumptionViolated|INSTRUMENTATION_STATUS_CODE: -4|SKIPPED' "screenshots/insertion-test-api-$api_level.txt"; then
-    echo 'Cross-app transcript insertion test failed'
-    cat "screenshots/insertion-test-api-$api_level.txt"
+sleep 2
+adb shell uiautomator dump /sdcard/window.xml >/dev/null
+adb shell cat /sdcard/window.xml > "screenshots/inserted-api-$api_level.xml"
+adb exec-out screencap -p > "screenshots/inserted-api-$api_level.png"
+adb shell am broadcast -a dev.hermitm0nk.flowbubble.TEST_HISTORY \
+    -n dev.hermitm0nk.flowbubble/dev.hermitm0nk.flowbubble.core.TestBridgeReceiver \
+    > "screenshots/history-test-api-$api_level.txt" || test_status=1
+if ! grep -q 'result=1' "screenshots/insertion-test-api-$api_level.txt" || \
+    ! grep -q 'Inserted from accessibility test' "screenshots/inserted-api-$api_level.xml" || \
+    ! grep -q 'result=1' "screenshots/history-test-api-$api_level.txt"; then
+    echo 'Cross-app transcript insertion and history check failed'
+    cat "screenshots/insertion-test-api-$api_level.txt" "screenshots/history-test-api-$api_level.txt"
     test_status=1
 fi
 adb logcat -d -t 500 -v brief > "screenshots/logcat-api-$api_level.txt" || true
