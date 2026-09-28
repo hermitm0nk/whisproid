@@ -179,7 +179,7 @@ class MicrophoneService : Service() {
                             }
                             val content = message.optJSONObject("serverContent")
                             val transcript = content?.optJSONObject("inputTranscription")?.optString("text")?.trim().orEmpty()
-                            if (completion.addFinal(transcript)) scheduleResult(700)
+                            if (completion.addFinal(transcript)) scheduleResult(2000)
                             if (content?.optBoolean("turnComplete") == true) {
                                 if (completion.markTurnComplete()) scheduleResult(500)
                             }
@@ -279,7 +279,7 @@ class MicrophoneService : Service() {
             }
             // SMART may have finalized all speech before the button is released.
             // In that case no additional server event is guaranteed after end.
-            scheduleResult(if (completion.canCommitAfterSettling()) 700 else 12_000)
+            scheduleResult(if (completion.canCommitAfterSettling()) 2000 else 12_000)
         }
         fun finish() {
             synchronized(lock) {

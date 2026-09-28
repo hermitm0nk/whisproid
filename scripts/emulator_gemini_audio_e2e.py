@@ -298,6 +298,10 @@ def exercise_tap_submit(bubble_x, bubble_y, submit_center):
         raise RuntimeError("Tap-to-submit transcription did not return dictation to ready")
     current_text = external_editor_text()
     if PHRASE not in current_text.lower() or current_text == baseline_text:
+        print(f"Safe tap-submit diagnostics: status={diagnostic_code('TEST_STATUS')}, "
+              f"history_has_phrase={history_contains_phrase()}, "
+              f"editor_chars={len(current_text)}, baseline_chars={len(baseline_text)}, "
+              f"cancel_code={diagnostic_code('TEST_CANCEL_CODE')}")
         raise RuntimeError("Tap-to-submit transcript was not inserted into the external editor")
     print("PASS: real overlay tap-to-submit transcribed synthetic speech and inserted it")
 

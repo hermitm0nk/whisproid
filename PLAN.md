@@ -6,12 +6,12 @@
 - [x] Link to app battery settings with optional Unrestricted guidance; make the foreground microphone service sticky for system-managed memory-pressure recovery, with permission-safe failure on restricted restarts. OEM stops cannot be bypassed.
 - [x] Draw an app-icon-like idle waveform, animated recording bars including hold, and a distinct animated spinner during submission/finalization.
 - [x] Fix appearance radio selection; mask the saved API key except its last four characters, with a blank replacement editor and explicit clear.
-- [x] Reduce PCM frames from 100 to 40 ms and final settling from two seconds to 0.5–0.7 seconds while keeping Gemini SMART final text. No separate parsing/editing request exists.
+- [x] Reduce PCM frames from 100 to 40 ms; keep a conservative two-second settling window for trailing SMART final segments, but complete faster (0.5 seconds) on an authoritative turn-complete event. No separate parsing/editing request exists.
 - [x] Replace per-run ephemeral release signing with required persistent GitHub Actions signing secrets; bump versionCode to 4.
 - [ ] Configure the four signing secrets, build/verify the production signed APK in CI, and publish v0.2.0. Previous ephemeral test installs require one uninstall; future same-key versions can update.
 - [x] Independent v0.2.0 review completed; fixed fork-PR signing-secrets failure and the 12-second delay for a final segment emitted before button release.
 - [x] Add CI screenshot capture of recording, hold, and transcribing overlay states without reading the accessibility hierarchy mid-session.
-- [ ] Compile/lint/test the changes in CI; inspect new UI screenshots and release-signing outcome.
+- [ ] Rerun secret-backed app-to-Gemini-to-editor test after restoring the final-text settling window; inspect recording/hold/spinner screenshots. Android 11/15/16 emulator matrix and Live API integration passed on `b263e7f`; production signing is blocked on missing secrets.
 
 ## 0.1.2 scope
 
