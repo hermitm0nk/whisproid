@@ -84,16 +84,27 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
         super.onDestroy()
     }
     private fun focusedEditor(): AccessibilityNodeInfo? {
-        val focused = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
-        if (!focused.isFocused || !focused.isEditable || focused.isPassword) return null
-        if (focused.packageName?.toString() == packageName) return null
-        val type = focused.inputType
-        val clazz = type and InputType.TYPE_MASK_CLASS
-        if (clazz != InputType.TYPE_CLASS_TEXT && clazz != 0) return null // Some custom editors omit inputType.
-        val variation = type and InputType.TYPE_MASK_VARIATION
-        if (variation == InputType.TYPE_TEXT_VARIATION_PASSWORD || variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
-            variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD) return null
-        return focused
+        // An accessibility overlay may briefly become the active accessibility
+        // window while it is touched, though the app editor retains input focus.
+        // Search application windows instead of treating that overlay as a loss
+        // of editor focus and cancelling the held recording.
+        val roots = mutableListOf<AccessibilityNodeInfo>()
+        rootInActiveWindow?.let { roots.add(it) }
+        windows.filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }
+            .forEach { window -> window.root?.let { roots.add(it) } }
+        for (root in roots) {
+            val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: continue
+            if (!focused.isFocused || !focused.isEditable || focused.isPassword) continue
+            if (focused.packageName?.toString() == packageName) continue
+            val type = focused.inputType
+            val clazz = type and InputType.TYPE_MASK_CLASS
+            if (clazz != InputType.TYPE_CLASS_TEXT && clazz != 0) continue // Some custom editors omit inputType.
+            val variation = type and InputType.TYPE_MASK_VARIATION
+            if (variation == InputType.TYPE_TEXT_VARIATION_PASSWORD || variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD) continue
+            return focused
+        }
+        return null
     }
     private fun updateVisibility() {
         val focused = focusedEditor()

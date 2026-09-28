@@ -246,7 +246,7 @@ def run():
     bubble_x = width - edge_margin - bubble_size // 2
     bubble_y = int(105 * density) + bubble_size // 2
     pcm_duration_ms = os.path.getsize("app/src/debug/assets/synthetic.pcm") // 32
-    hold_duration_ms = max(4000, pcm_duration_ms + 1800)
+    hold_duration_ms = max(8000, pcm_duration_ms + 1800)
     before = diagnostic_code("TEST_STATUS")
     before_pid = adb("shell", "pidof", APP).strip()
     if not focused_external_editor():
@@ -257,9 +257,33 @@ def run():
 
     # The debug receiver arms the in-app substitution harness; this remains a
     # real accessibility-service hold/release gesture through AudioRecord.
-    adb("shell", "input", "swipe", str(bubble_x), str(bubble_y),
-        str(bubble_x), str(bubble_y), str(hold_duration_ms),
-        timeout=hold_duration_ms / 1000 + 10)
+    # Keep the swipe alive while collecting diagnostics from the held state.
+    # Never include subprocess details in errors: the API key is not part of
+    # this command, but keeping diagnostics generic makes the log boundary clear.
+    swipe = subprocess.Popen(
+        ["adb", "shell", "input", "swipe", str(bubble_x), str(bubble_y),
+         str(bubble_x), str(bubble_y), str(hold_duration_ms)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    try:
+        time.sleep(1)
+        during_status = diagnostic_code("TEST_STATUS")
+        during_focus = int(focused_external_editor())
+        print(f"Safe during-hold diagnostics: status={during_status}, focused_external_editor={during_focus}")
+        try:
+            _, _ = swipe.communicate(timeout=hold_duration_ms / 1000 + 10)
+        except subprocess.TimeoutExpired:
+            swipe.kill()
+            swipe.communicate()
+            raise RuntimeError("Gesture subprocess timed out") from None
+        if swipe.returncode:
+            raise RuntimeError(f"Gesture subprocess failed (exit {swipe.returncode})")
+    finally:
+        if swipe.poll() is None:
+            swipe.kill()
+            swipe.communicate()
+    after_focus = int(focused_external_editor())
+    print(f"Safe after-gesture diagnostics: focused_external_editor={after_focus}")
 
     deadline = time.monotonic() + 35
     while time.monotonic() < deadline:
