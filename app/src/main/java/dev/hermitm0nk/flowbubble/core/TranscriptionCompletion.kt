@@ -1,6 +1,6 @@
 package dev.hermitm0nk.flowbubble.core
 
-/** Tracks final segments and whether the server confirmed the released utterance. */
+/** Tracks Gemini's authoritative final transcription segments across button release. */
 internal class TranscriptionCompletion {
     private val segments = mutableListOf<String>()
     private var endSent = false
@@ -18,6 +18,10 @@ internal class TranscriptionCompletion {
         return endSent
     }
     fun canCommit(): Boolean = endSent && confirmedAfterEnd && segments.isNotEmpty()
-    fun canCommitOnClose(code: Int): Boolean = code == 1000 && canCommit()
+    // Gemini may finalize an utterance during a pause before activityEnd. Give
+    // late frames a settling window, then accept that final even if no more
+    // server event follows release.
+    fun canCommitAfterSettling(): Boolean = endSent && segments.isNotEmpty()
+    fun canCommitOnClose(code: Int): Boolean = code == 1000 && canCommitAfterSettling()
     fun text(): String = segments.joinToString(" ").trim()
 }

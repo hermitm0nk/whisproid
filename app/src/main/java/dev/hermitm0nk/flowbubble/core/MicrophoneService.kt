@@ -283,9 +283,9 @@ class MicrophoneService : Service() {
         }
         private fun scheduleResult(delayMs: Long) { main.removeCallbacks(timeout); main.postDelayed(timeout, delayMs) }
         private fun finishResult() {
-            val ready = synchronized(lock) { setup to completion.canCommit() }
+            val ready = synchronized(lock) { setup to completion.canCommitAfterSettling() }
             if (!ready.first || !ready.second) {
-                fail(if (!ready.first) "Live API did not complete setup" else "Live API did not confirm final speech")
+                fail(if (!ready.first) "Live API did not complete setup" else "Live API did not return final speech")
                 return
             }
             val result: String

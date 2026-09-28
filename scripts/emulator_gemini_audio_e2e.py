@@ -224,6 +224,15 @@ def save_safe_screen(name):
                                    check=True, capture_output=True, timeout=20).stdout)
 
 
+def report_safe_app_crash(api_key):
+    crash = adb("shell", "logcat", "-d", "-b", "crash", "-v", "brief")
+    lines = crash.replace(api_key, "[REDACTED]").splitlines()
+    for index, line in enumerate(lines):
+        if f"Process: {APP}" in line:
+            print("App crash log (redacted): " + "\n".join(lines[max(0, index - 2):index + 35])[:4500])
+
+
+
 def run():
     api_key = os.environ.get("GOOGLE_AI_STUDIO_KEY", "")
     if not api_key:
@@ -239,6 +248,7 @@ def run():
     pcm_duration_ms = os.path.getsize("app/src/debug/assets/synthetic.pcm") // 32
     hold_duration_ms = max(4000, pcm_duration_ms + 1800)
     before = diagnostic_code("TEST_STATUS")
+    before_pid = adb("shell", "pidof", APP).strip()
     if not focused_external_editor():
         raise RuntimeError("Refusing gesture: external EditText is not focused")
     save_safe_screen("whisproid-before-gesture.png")
@@ -259,8 +269,11 @@ def run():
             print("PASS: synthetic speech transcribed through the app microphone path and inserted into the external editor")
             return
         time.sleep(1.5)
+    after_pid = adb("shell", "pidof", APP).strip()
     print(f"Safe debug status: bubble={diagnostic_code('TEST_STATUS')}, "
-          f"history={diagnostic_code('TEST_HISTORY_COUNT')}")
+          f"history={diagnostic_code('TEST_HISTORY_COUNT')}, "
+          f"process_changed={before_pid != after_pid}")
+    report_safe_app_crash(api_key)
     save_safe_screen("whisproid-after-gesture.png")
     raise RuntimeError("Expected synthetic transcript was not inserted into the external editor")
 

@@ -227,6 +227,16 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
         }
     }
     private fun beginRecording() {
+        // Accessibility events are debounced. Recheck focus at the gesture itself
+        // so a disappearing editor cannot briefly start microphone capture.
+        val current = target
+        val focused = focusedEditor()
+        if (current == null || focused == null || focused != current ||
+            focused.windowId != targetWindow || !current.refresh() || !current.isFocused) {
+            holdGestureActive = false
+            updateVisibility()
+            return
+        }
         val mic = MicrophoneService.instance
         if (mic == null) {
             notifyUser("Open Whisproid and tap Enable dictation first")
@@ -234,6 +244,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
             return
         }
         mic.listener = this
+        lastError = null
         targetInvalidated = false
         if (mic.begin()) { state = "recording"; if (!holdGestureActive) render() }
         else holdGestureActive = false

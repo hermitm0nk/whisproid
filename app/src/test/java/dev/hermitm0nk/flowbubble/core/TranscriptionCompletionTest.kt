@@ -4,12 +4,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TranscriptionCompletionTest {
-    @Test fun earlierFinalIsPartialUntilServerConfirmsReleasedSpeech() {
+    @Test fun earlierFinalSettlesWhenNoPostReleaseFrameArrives() {
         val completion = TranscriptionCompletion()
         completion.addFinal("First sentence.")
         completion.markTurnComplete()
         completion.markEndSent()
         assertFalse(completion.canCommit())
+        assertTrue(completion.canCommitAfterSettling())
         assertEquals("First sentence.", completion.text())
     }
 
