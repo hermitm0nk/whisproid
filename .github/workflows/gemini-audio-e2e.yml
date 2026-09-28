@@ -28,8 +28,15 @@ jobs:
       - name: Install speech and gRPC tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq espeak-ng ffmpeg
+          sudo apt-get install -y -qq espeak-ng ffmpeg pulseaudio pulseaudio-utils
           python -m pip install grpcio grpcio-tools
+      - name: Start headless audio backend
+        run: |
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=whisproid_test_sink
+          pactl load-module module-remap-source master=whisproid_test_sink.monitor source_name=whisproid_test_mic
+          pactl set-default-sink whisproid_test_sink
+          pactl set-default-source whisproid_test_mic
       - name: Create deterministic synthetic speech
         run: |
           espeak-ng -s 135 -w "$RUNNER_TEMP/whisproid-e2e-source.wav" 'Today is Monday and the sky is blue.'
