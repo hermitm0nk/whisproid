@@ -44,6 +44,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
     private var target: AccessibilityNodeInfo? = null
     private var targetWindow = -1
     private var targetInvalidated = false
+    private var transcriptGeneration = 0
     private var state = "ready"
     private var recordingMode = "tap"
     private var holdGestureActive = false
@@ -122,7 +123,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
         bubble?.let { try { wm.removeView(it) } catch (_: Exception) {} }
         bubble = null; params = null
     }
-    private fun cancelAndHide() { MicrophoneService.instance?.cancel(); target = null; hide() }
+    private fun cancelAndHide() { transcriptGeneration++; MicrophoneService.instance?.cancel(); target = null; hide() }
     private fun button(symbol: String, label: String, background: Int, size: Int, radius: Float): TextView = BubbleButton(this).apply {
         text = symbol; textSize = 23f; gravity = Gravity.CENTER
         setTextColor(if (settings.darkMode) Color.BLACK else Color.WHITE)
@@ -172,7 +173,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
                         MotionEvent.ACTION_CANCEL -> {
                             main.removeCallbacks(hold)
                             holdGestureActive = false
-                            if (holding) MicrophoneService.instance?.cancel()
+                            if (holding) { transcriptGeneration++; MicrophoneService.instance?.cancel() }
                             state = "ready"; render()
                         }
                         MotionEvent.ACTION_UP -> {
@@ -192,7 +193,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
             layout.addView(label)
         } else {
             val cancel = button("×", "Cancel dictation", color, size, dp(size / 2).toFloat())
-            cancel.setOnClickListener { MicrophoneService.instance?.cancel(); state = "ready"; render() }
+            cancel.setOnClickListener { transcriptGeneration++; MicrophoneService.instance?.cancel(); state = "ready"; render() }
             layout.addView(cancel)
             val meter = button(if (state == "recording") "••••••" else "…", state, color,
                 if (settings.bubbleStyle == "pill") size * 2 else size + 40, dp(size / 2).toFloat())
@@ -228,7 +229,9 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
         main.post { this.state = state; if (bubble != null && !holdGestureActive) render() }
     }
     override fun onTranscript(text: String) {
+        val generation = transcriptGeneration
         main.post {
+            if (generation != transcriptGeneration) return@post
             HistoryStore(this).use { it.add(text) }
             val node = target
             val stillFocused = focusedEditor()

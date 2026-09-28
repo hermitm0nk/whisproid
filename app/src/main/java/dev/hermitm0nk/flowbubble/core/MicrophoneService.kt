@@ -86,7 +86,11 @@ class MicrophoneService : Service() {
                     listener?.onFailure(error + if (!text.isNullOrBlank()) "; partial transcript saved in History" else "")
                 }
                 text.isNullOrBlank() -> listener?.onFailure("No speech was transcribed")
-                else -> listener?.onTranscript(text)
+                else -> {
+                    val destination = listener
+                    if (destination != null) destination.onTranscript(text)
+                    else HistoryStore(this).use { it.add(text) }
+                }
             }
             listener?.onState("ready")
         }
@@ -135,7 +139,7 @@ class MicrophoneService : Service() {
                         .put("inputAudioTranscription", JSONObject().put("mode", "SMART")))
                     synchronized(lock) {
                         if (done) { webSocket.cancel(); return }
-                        webSocket.send(config.toString())
+                        if (!webSocket.send(config.toString())) fail("Live API could not send setup")
                     }
                 }
                 override fun onMessage(webSocket: WebSocket, text: String) {
@@ -146,10 +150,15 @@ class MicrophoneService : Service() {
                             if (message.has("setupComplete")) {
                                 setup = true
                                 main.removeCallbacks(setupTimeout)
-                                webSocket.send("{\"realtimeInput\":{\"activityStart\":{}}}")
-                                pending.forEach { sendAudio(webSocket, it) }
+                                if (!webSocket.send("{\"realtimeInput\":{\"activityStart\":{}}}")) {
+                                    fail("Live API could not start speech"); return
+                                }
+                                for (chunk in pending) {
+                                    if (done) break
+                                    sendAudio(webSocket, chunk)
+                                }
                                 pending.clear()
-                                if (ended) sendEnd(webSocket)
+                                if (ended && !done) sendEnd(webSocket)
                             }
                             val content = message.optJSONObject("serverContent")
                             val transcript = content?.optJSONObject("inputTranscription")?.optString("text")?.trim().orEmpty()
@@ -166,12 +175,12 @@ class MicrophoneService : Service() {
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     fail("Live API connection failed${response?.code?.let { " (HTTP $it)" } ?: ""}: ${t.message ?: "network error"}")
                 }
+                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                    webSocket.close(code, reason)
+                    handleClose(code, reason)
+                }
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    synchronized(lock) {
-                        if (done) return
-                        if (completion.canCommitOnClose(code)) scheduleResult(100)
-                        else fail("Live API closed before completion (code $code): $reason")
-                    }
+                    handleClose(code, reason)
                 }
                 })
                 synchronized(lock) {
@@ -219,8 +228,16 @@ class MicrophoneService : Service() {
             finally { audio.release(); synchronized(lock) { if (ended && setup && !done) socket?.let { sendEnd(it) } } }
         }
         private fun sendAudio(ws: WebSocket, base64: String) {
-            ws.send(JSONObject().put("realtimeInput", JSONObject().put("audio", JSONObject()
-                .put("data", base64).put("mimeType", "audio/pcm;rate=16000"))).toString())
+            if (!ws.send(JSONObject().put("realtimeInput", JSONObject().put("audio", JSONObject()
+                .put("data", base64).put("mimeType", "audio/pcm;rate=16000"))).toString()))
+                fail("Live API could not send microphone audio")
+        }
+        private fun handleClose(code: Int, reason: String) {
+            synchronized(lock) {
+                if (done) return
+                if (completion.canCommitOnClose(code)) scheduleResult(100)
+                else fail("Live API closed before completion (code $code): $reason")
+            }
         }
         private fun sendEnd(ws: WebSocket) {
             if (waitingForLast) return
@@ -243,9 +260,11 @@ class MicrophoneService : Service() {
             }
         }
         fun cancel() {
-            synchronized(lock) { if (done) return; done = true; stopped = true; try { recorder?.stop() } catch (_: Exception) {} }
+            synchronized(lock) { done = true; stopped = true; try { recorder?.stop() } catch (_: Exception) {} }
+            // Even a completed session may still have an undelivered main-thread callback.
+            if (session === this) session = null
             socket?.cancel(); main.removeCallbacks(maxLength); main.removeCallbacks(setupTimeout); main.removeCallbacks(timeout)
-            main.post { if (session === this) { session = null; listener?.onState("ready") } }
+            main.post { if (session == null) listener?.onState("ready") }
         }
         private fun scheduleResult(delayMs: Long) { main.removeCallbacks(timeout); main.postDelayed(timeout, delayMs) }
         private fun finishResult() {
