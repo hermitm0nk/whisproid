@@ -3,12 +3,10 @@ package dev.hermitm0nk.flowbubble
 import android.graphics.Bitmap
 import android.content.ContentValues
 import android.provider.MediaStore
+import android.view.View
+import android.view.ViewGroup
+import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
-import androidx.test.espresso.Espresso.onView
-import androidx.test.espresso.action.ViewActions.click
-import androidx.test.espresso.assertion.ViewAssertions.matches
-import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
-import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.hermitm0nk.flowbubble.data.HistoryStore
@@ -50,16 +48,28 @@ class AppSmokeTest {
     @Test fun mainScreenLaunchesSettingsAndHistory() {
         HistoryStore(context).use { it.add("Screenshot sample transcript") }
         ActivityScenario.launch(MainActivity::class.java).use {
-            onView(withText("Whisproid")).check(matches(isDisplayed()))
+            it.onActivity { activity -> assertNotNull(findText(activity.window.decorView, "Whisproid")) }
             captureScreenshot("home")
-            onView(withText("API key and bubble appearance")).perform(click())
-            onView(withText("Google AI Studio API key")).check(matches(isDisplayed()))
+            it.onActivity { activity ->
+                findText(activity.window.decorView, "API key and bubble appearance")!!.performClick()
+                assertNotNull(findText(activity.window.decorView, "Google AI Studio API key"))
+            }
             captureScreenshot("settings")
-            onView(withText("View transcript history")).perform(click())
-            onView(withText("Transcript history")).check(matches(isDisplayed()))
-            onView(withText("Screenshot sample transcript")).check(matches(isDisplayed()))
+            it.onActivity { activity ->
+                findText(activity.window.decorView, "View transcript history")!!.performClick()
+                assertNotNull(findText(activity.window.decorView, "Transcript history"))
+                assertNotNull(findText(activity.window.decorView, "Screenshot sample transcript"))
+            }
             captureScreenshot("history")
         }
+    }
+
+    private fun findText(view: View, value: String): TextView? {
+        if (view is TextView && view.text.toString() == value) return view
+        if (view is ViewGroup) for (i in 0 until view.childCount) {
+            findText(view.getChildAt(i), value)?.let { return it }
+        }
+        return null
     }
 
     private fun captureScreenshot(name: String) {
