@@ -1,5 +1,13 @@
 # Plan and progress
 
+## 0.2.3 editor compatibility and completion latency
+
+- [x] Search focused editor nodes in application window trees when `findFocus` misses a custom editor, while still rejecting password and nontext nodes.
+- [x] Treat an exposed hint as empty editor content at an empty selection so the placeholder is not prepended to dictation.
+- [x] Update size and opacity numbers as the sliders move, with an instrumentation check for labels and persisted values.
+- [x] Confirm audio already streams in 40 ms chunks during recording. Shorten the post-release wait after a final segment or turn marker while retaining a settling window for trailing speech.
+- [ ] Verify the release in CI and install over a stable-signed v0.2.1 on a physical device; third-party ChatGPT/Claude/WhatsApp/Telegram behavior depends on their accessibility trees.
+
 ## 0.2.2 stability, visuals and update continuity
 
 - [x] User confirmed the basic microphone-to-editor workflow on a physical device; focus this iteration on the reported defects, not repeating that workflow.

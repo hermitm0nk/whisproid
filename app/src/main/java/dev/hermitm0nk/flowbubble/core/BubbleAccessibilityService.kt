@@ -118,7 +118,7 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (!::wm.isInitialized) return
         main.removeCallbacks(refresh)
-        main.postDelayed(refresh, 120)
+        main.postDelayed(refresh, 40)
     }
     override fun onInterrupt() { lastCancelCode = 5; cancelAndHide() }
     override fun onDestroy() {
@@ -137,18 +137,35 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
         windows.filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }
             .forEach { window -> window.root?.let { roots.add(it) } }
         for (root in roots) {
-            val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: continue
-            if (!focused.isFocused || !focused.isEditable || focused.isPassword) continue
-            if (focused.packageName?.toString() == packageName) continue
-            val type = focused.inputType
-            val clazz = type and InputType.TYPE_MASK_CLASS
-            if (clazz != InputType.TYPE_CLASS_TEXT && clazz != 0) continue // Some custom editors omit inputType.
-            val variation = type and InputType.TYPE_MASK_VARIATION
-            if (variation == InputType.TYPE_TEXT_VARIATION_PASSWORD || variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
-                variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD) continue
-            return focused
+            // Compose/WebView editors may expose focus on a container or fail to
+            // implement findFocus. Inspect the tree for the actual focused editor.
+            val direct = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            if (direct != null && usableEditor(direct)) return direct
+            findFocusedEditor(root)?.let { return it }
         }
         return null
+    }
+    private fun findFocusedEditor(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val nodes = ArrayDeque<AccessibilityNodeInfo>()
+        nodes.add(root)
+        var inspected = 0
+        while (nodes.isNotEmpty() && inspected++ < 1500) {
+            val node = nodes.removeFirst()
+            if (usableEditor(node)) return node
+            for (i in 0 until node.childCount) node.getChild(i)?.let { nodes.addLast(it) }
+        }
+        return null
+    }
+    private fun usableEditor(node: AccessibilityNodeInfo): Boolean {
+        if (!node.isFocused || node.isPassword || node.packageName?.toString() == packageName) return false
+        val type = node.inputType
+        val clazz = type and InputType.TYPE_MASK_CLASS
+        if (clazz != InputType.TYPE_CLASS_TEXT && clazz != 0) return false
+        val variation = type and InputType.TYPE_MASK_VARIATION
+        if (variation == InputType.TYPE_TEXT_VARIATION_PASSWORD || variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+            variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD) return false
+        // Custom semantics sometimes omit isEditable while providing SET_TEXT.
+        return node.isEditable || node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }
     }
     private fun updateVisibility() {
         val focused = focusedEditor()
@@ -375,7 +392,8 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
     }
     private fun insert(node: AccessibilityNodeInfo, words: String): Boolean {
         // AccessibilityNodeInfo.text may expose an empty editor's hint as text.
-        val current = if (node.isShowingHintText) "" else node.text?.toString().orEmpty()
+        val current = editableText(node.text?.toString().orEmpty(), node.hintText?.toString(),
+            node.isShowingHintText, node.textSelectionStart, node.textSelectionEnd)
         val from = node.textSelectionStart.takeIf { it >= 0 } ?: current.length
         val to = node.textSelectionEnd.takeIf { it >= 0 } ?: from
         val insertion = composeInsertion(current, from, to, words)

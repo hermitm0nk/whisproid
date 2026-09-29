@@ -179,9 +179,9 @@ class MicrophoneService : Service() {
                             }
                             val content = message.optJSONObject("serverContent")
                             val transcript = content?.optJSONObject("inputTranscription")?.optString("text")?.trim().orEmpty()
-                            if (completion.addFinal(transcript)) scheduleResult(2000)
+                            if (completion.addFinal(transcript)) scheduleResult(700)
                             if (content?.optBoolean("turnComplete") == true) {
-                                if (completion.markTurnComplete()) scheduleResult(500)
+                                if (completion.markTurnComplete() && completion.canCommit()) scheduleResult(150)
                             }
                         }
                     } catch (_: Exception) { /* Malformed server frames cannot become text. */ }
@@ -279,7 +279,9 @@ class MicrophoneService : Service() {
             }
             // SMART may have finalized all speech before the button is released.
             // In that case no additional server event is guaranteed after end.
-            scheduleResult(if (completion.canCommitAfterSettling()) 2000 else 12_000)
+            // Audio was streamed throughout capture. An already finalized
+            // segment may still gain a trailing server frame after release.
+            scheduleResult(if (completion.canCommitAfterSettling()) 1200 else 12_000)
         }
         fun finish() {
             synchronized(lock) {

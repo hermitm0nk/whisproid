@@ -2,6 +2,10 @@ package dev.hermitm0nk.flowbubble.core
 
 internal data class Insertion(val text: String, val cursor: Int)
 
+/** Some editors expose the placeholder as node text without setting isShowingHintText. */
+internal fun editableText(text: String, hint: String?, showingHint: Boolean, start: Int, end: Int): String =
+    if (showingHint || (hint != null && text == hint && start <= 0 && end <= 0)) "" else text
+
 /** Pure text edit, preserving surrounding content and replacing the active selection. */
 internal fun composeInsertion(current: String, start: Int, end: Int, words: String): Insertion {
     val first = minOf(start.coerceIn(0, current.length), end.coerceIn(0, current.length))

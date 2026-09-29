@@ -161,11 +161,19 @@ class MainActivity : Activity() {
         root.addView(text("If Android stops dictation in the background, open App info → Battery (or App battery usage) and choose Unrestricted, if your device offers it. This is optional and may increase battery use. Whisproid does not request an exemption automatically.", 13, false), spaced())
         addButton("Open Whisproid app settings", false) { openAppSettings() }
         root.addView(text("Floating button", 20, true), spaced())
-        root.addView(text("Size: ${settings.bubbleSizeDp} dp", 14, false), spaced())
-        val size = SeekBar(this).apply { max = 40; progress = (settings.bubbleSizeDp - 48).coerceIn(0, 40); setOnSeekBarChangeListener(seek { settings.bubbleSizeDp = 48 + it }) }
+        val sizeLabel = text("Size: ${settings.bubbleSizeDp} dp", 14, false)
+        root.addView(sizeLabel, spaced())
+        val size = SeekBar(this).apply { max = 40; progress = (settings.bubbleSizeDp - 48).coerceIn(0, 40); setOnSeekBarChangeListener(seek {
+            settings.bubbleSizeDp = 48 + it
+            sizeLabel.text = "Size: ${settings.bubbleSizeDp} dp"
+        }) }
         root.addView(size)
-        root.addView(text("Opacity: ${(settings.bubbleAlpha * 100).toInt()}%", 14, false), spaced())
-        val opacity = SeekBar(this).apply { max = 75; progress = ((settings.bubbleAlpha - .25f) * 100).toInt().coerceIn(0, 75); setOnSeekBarChangeListener(seek { settings.bubbleAlpha = .25f + it / 100f }) }
+        val opacityLabel = text("Opacity: ${(settings.bubbleAlpha * 100).toInt()}%", 14, false)
+        root.addView(opacityLabel, spaced())
+        val opacity = SeekBar(this).apply { max = 75; progress = ((settings.bubbleAlpha - .25f) * 100).toInt().coerceIn(0, 75); setOnSeekBarChangeListener(seek {
+            settings.bubbleAlpha = .25f + it / 100f
+            opacityLabel.text = "Opacity: ${25 + it}%"
+        }) }
         root.addView(opacity)
         root.addView(text("Style", 14, true), spaced())
         val styles = listOf("orb" to "Orb", "pill" to "Pill", "square" to "Soft square")

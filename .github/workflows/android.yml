@@ -55,7 +55,7 @@ jobs:
           KEYSTORE="$RUNNER_TEMP/whisproid-production-signing.jks"
           UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
           ALIGNED_APK="$RUNNER_TEMP/app-release-aligned.apk"
-          SIGNED_APK="$RUNNER_TEMP/whisproid-v0.2.2.apk"
+          SIGNED_APK="$RUNNER_TEMP/whisproid-v0.2.3.apk"
           trap 'rm -f "$KEYSTORE" "$ALIGNED_APK"' EXIT
           printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
           test -s "$KEYSTORE"
@@ -72,6 +72,8 @@ jobs:
           test "${CERT_SHA256,,}" = "74b6afb68d2d58ab2d59a5fb07dba318158fd17c577b0465933d5895033b7858"
           PACKAGE="$("$BUILD_TOOLS/aapt" dump badging "$SIGNED_APK" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -1)"
           test "$PACKAGE" = "dev.hermitm0nk.flowbubble"
+          VERSION_CODE="$("$BUILD_TOOLS/aapt" dump badging "$SIGNED_APK" | sed -n "s/^package:.*versionCode='\([^']*\)'.*/\1/p" | head -1)"
+          test "$VERSION_CODE" = "7"
           ANALYZER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/apkanalyzer' -type f | sort -V | tail -1)"
           test -x "$ANALYZER"
           DEBUGGABLE="$("$ANALYZER" manifest debuggable "$SIGNED_APK")"
@@ -119,8 +121,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           APK_PATH: ${{ steps.release-apk.outputs.apk }}
         run: |
-          RELEASE_TAG="v0.2.2"
-          NOTES="Production-signed, non-debuggable release APK from commit $GITHUB_SHA. It uses the same pinned signing certificate as v0.2.0/v0.2.1 and versionCode 6, so it updates either in place. The transcribing overlay now keeps its spinner visible across late recording callbacks. Earlier v0.1.x test releases had ephemeral signing keys; uninstall those old builds once (copy transcript history first, since uninstall erases local data). Android 11/15/16 emulator and Gemini Live CI checks passed before publication."
+          RELEASE_TAG="v0.2.3"
+          NOTES="Production-signed, non-debuggable release APK from commit $GITHUB_SHA. It uses the pinned signing certificate from v0.2.1 and versionCode 7, so it upgrades in place and retains app data. Improves focused editor detection and hint insertion, updates size/opacity labels during dragging, and shortens the post-speech completion wait. Audio continues to stream throughout recording."
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             existing="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
             target="$(jq -r '.target_commitish' <<< "$existing")"

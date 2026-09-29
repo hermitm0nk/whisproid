@@ -6,6 +6,7 @@ import android.provider.MediaStore
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import android.widget.SeekBar
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -63,6 +64,28 @@ class AppSmokeTest {
             captureScreenshot("history")
         }
     }
+
+    @Test fun bubbleSlidersUpdateLabelsAndPersistValues() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                findText(activity.window.decorView, "API key and bubble appearance")!!.performClick()
+                val sliders = findSeekBars(activity.window.decorView)
+                assertEquals(2, sliders.size)
+                sliders[0].progress = 28
+                sliders[1].progress = 45
+                assertNotNull(findText(activity.window.decorView, "Size: 76 dp"))
+                assertNotNull(findText(activity.window.decorView, "Opacity: 70%"))
+                assertEquals(76, SettingsStore(context).bubbleSizeDp)
+                assertEquals(.70f, SettingsStore(context).bubbleAlpha, .001f)
+            }
+        }
+        SettingsStore(context).bubbleSizeDp = 58
+        SettingsStore(context).bubbleAlpha = .72f
+    }
+
+    private fun findSeekBars(view: View): List<SeekBar> =
+        (if (view is SeekBar) listOf(view) else emptyList()) +
+            (if (view is ViewGroup) (0 until view.childCount).flatMap { findSeekBars(view.getChildAt(it)) } else emptyList())
 
     private fun findText(view: View, value: String): TextView? {
         if (view is TextView && view.text.toString() == value) return view

@@ -30,4 +30,12 @@ class TranscriptionCompletionTest {
         assertTrue(completion.markTurnComplete())
         assertTrue(completion.canCommit())
     }
+
+    @Test fun emptyTurnMarkerCannotCompleteWithoutSpeech() {
+        val completion = TranscriptionCompletion()
+        completion.markEndSent()
+        assertTrue(completion.markTurnComplete())
+        assertFalse(completion.canCommit())
+        assertFalse(completion.canCommitAfterSettling())
+    }
 }
