@@ -4,6 +4,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class TextInsertionTest {
+    @Test fun chatEditorsUseNativePasteInsteadOfAmbiguousAccessibilityText() {
+        assertEquals(true, useNativePaste("com.whatsapp"))
+        assertEquals(true, useNativePaste("com.whatsapp.w4b"))
+        assertEquals(true, useNativePaste("org.telegram.messenger"))
+        assertEquals(true, useNativePaste("org.telegram.messenger.web"))
+        assertEquals(false, useNativePaste("com.example.editor"))
+    }
     @Test fun hintIsNeverPrependedToEmptyMessage() {
         assertEquals("", editableText("Message", "Message", true, 0, 0))
         assertEquals("", editableText("Message", "Message", false, -1, -1))

@@ -1,5 +1,11 @@
 # Plan and progress
 
+## 0.2.4 placeholder correction
+
+- [x] Physical-device screenshots show WhatsApp prepending its visible "Message" placeholder despite v0.2.3's hint metadata check.
+- [x] Use the editor's native paste action in WhatsApp and Telegram, avoiding reconstruction from ambiguous accessibility text; preserve failed transcripts in History.
+- [ ] Verify the behavior in both apps on the user's device. Emulators do not contain these third-party apps.
+
 ## 0.2.3 editor compatibility and completion latency
 
 - [x] Search focused editor nodes in application window trees when `findFocus` misses a custom editor, while still rejecting password and nontext nodes.

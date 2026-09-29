@@ -55,7 +55,7 @@ jobs:
           KEYSTORE="$RUNNER_TEMP/whisproid-production-signing.jks"
           UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
           ALIGNED_APK="$RUNNER_TEMP/app-release-aligned.apk"
-          SIGNED_APK="$RUNNER_TEMP/whisproid-v0.2.3.apk"
+          SIGNED_APK="$RUNNER_TEMP/whisproid-v0.2.4.apk"
           trap 'rm -f "$KEYSTORE" "$ALIGNED_APK"' EXIT
           printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
           test -s "$KEYSTORE"
@@ -73,7 +73,7 @@ jobs:
           PACKAGE="$("$BUILD_TOOLS/aapt" dump badging "$SIGNED_APK" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -1)"
           test "$PACKAGE" = "dev.hermitm0nk.flowbubble"
           VERSION_CODE="$("$BUILD_TOOLS/aapt" dump badging "$SIGNED_APK" | sed -n "s/^package:.*versionCode='\([^']*\)'.*/\1/p" | head -1)"
-          test "$VERSION_CODE" = "7"
+          test "$VERSION_CODE" = "8"
           ANALYZER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/apkanalyzer' -type f | sort -V | tail -1)"
           test -x "$ANALYZER"
           DEBUGGABLE="$("$ANALYZER" manifest debuggable "$SIGNED_APK")"
@@ -121,8 +121,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           APK_PATH: ${{ steps.release-apk.outputs.apk }}
         run: |
-          RELEASE_TAG="v0.2.3"
-          NOTES="Production-signed, non-debuggable release APK from commit $GITHUB_SHA. It uses the pinned signing certificate from v0.2.1 and versionCode 7, so it upgrades in place and retains app data. Improves focused editor detection and hint insertion, updates size/opacity labels during dragging, and shortens the post-speech completion wait. Audio continues to stream throughout recording."
+          RELEASE_TAG="v0.2.4"
+          NOTES="Production-signed, non-debuggable release APK from commit $GITHUB_SHA. It uses the pinned signing certificate from v0.2.1 and versionCode 8, so it upgrades in place and retains app data. WhatsApp and Telegram now use their native paste action to avoid prepending an accessibility placeholder such as Message. The transcript remains in History if that action fails."
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             existing="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
             target="$(jq -r '.target_commitish' <<< "$existing")"

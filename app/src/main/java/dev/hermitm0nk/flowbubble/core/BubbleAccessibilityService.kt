@@ -391,6 +391,10 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
         }
     }
     private fun insert(node: AccessibilityNodeInfo, words: String): Boolean {
+        // WhatsApp and Telegram can report the visible placeholder as node.text
+        // without marking it as a hint. Let the editor insert at its real cursor
+        // rather than constructing replacement text from that ambiguous snapshot.
+        if (useNativePaste(node.packageName?.toString())) return paste(node, words)
         // AccessibilityNodeInfo.text may expose an empty editor's hint as text.
         val current = editableText(node.text?.toString().orEmpty(), node.hintText?.toString(),
             node.isShowingHintText, node.textSelectionStart, node.textSelectionEnd)
@@ -405,6 +409,9 @@ class BubbleAccessibilityService : AccessibilityService(), MicrophoneService.Lis
             })
             return true
         }
+        return paste(node, words)
+    }
+    private fun paste(node: AccessibilityNodeInfo, words: String): Boolean {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("Whisproid transcription", words))
         return node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
